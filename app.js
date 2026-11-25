@@ -26,6 +26,97 @@ const state = {
 let DATA = null;
 const charts = new Map();
 
+/* ---- Shared crosshair ------------------------------------------------
+   Hovering any chart places the same vertical line on every other chart and
+   swaps each card's headline figure for its value on that date, so one pass
+   of the cursor reads the whole dashboard at a single point in time. */
+
+let hoverTs = null;
+let hoverFrame = null;
+
+/** Last observation at or before `ts`; economic prints stay in effect until the next one. */
+function indexAt(timestamps, ts) {
+  if (!timestamps.length || ts < timestamps[0]) return -1;
+  let lo = 0;
+  let hi = timestamps.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (timestamps[mid] <= ts) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+function setHover(ts) {
+  if (hoverTs === ts) return;
+  hoverTs = ts;
+  if (hoverFrame) return;
+  hoverFrame = requestAnimationFrame(() => {
+    hoverFrame = null;
+    for (const chart of charts.values()) chart.render();
+    updateReadouts();
+  });
+}
+
+function updateReadouts() {
+  for (const [key, chart] of charts) {
+    if (!key.startsWith('chart-')) continue;
+    const { series, dates, values } = chart.$hover;
+    const { timestamps } = chart.$hover.lines[0];
+    const card = chart.canvas.closest('.card');
+    if (!card) continue;
+
+    const i = hoverTs === null ? values.length - 1 : indexAt(timestamps, hoverTs);
+    const hasPoint = i >= 0;
+    card.querySelector('.card-latest').textContent = hasPoint ? formatValue(series, values[i]) : '—';
+    card.querySelector('.card-sub').textContent = hasPoint
+      ? `${hoverTs === null ? 'as of' : ''} ${prettyDate(dates[i])}`.trim()
+      : 'no reading yet';
+    card.classList.toggle('is-scrubbing', hoverTs !== null);
+  }
+}
+
+const crosshairPlugin = {
+  id: 'crosshair',
+  afterDatasetsDraw(chart) {
+    if (hoverTs === null || !chart.$hover) return;
+    const { ctx, chartArea, scales } = chart;
+    const x = scales.x.getPixelForValue(hoverTs);
+    if (x < chartArea.left || x > chartArea.right) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(230,233,239,0.5)';
+    ctx.stroke();
+
+    for (const line of chart.$hover.lines) {
+      const i = indexAt(line.timestamps, hoverTs);
+      if (i < 0) continue;
+      const y = scales.y.getPixelForValue(line.values[i]);
+      if (y < chartArea.top || y > chartArea.bottom) continue;
+      ctx.beginPath();
+      ctx.arc(scales.x.getPixelForValue(line.timestamps[i]), y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = line.color;
+      ctx.fill();
+    }
+    ctx.restore();
+  },
+};
+
+/** Lets a chart participate in the shared crosshair. */
+function trackHover(chart, hover) {
+  chart.$hover = hover;
+  const { canvas } = chart;
+  canvas.addEventListener('mousemove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    setHover(chart.scales.x.getValueForPixel(event.clientX - rect.left));
+  });
+  canvas.addEventListener('mouseleave', () => setHover(null));
+}
+
 /* ---- Date helpers ---------------------------------------------------- */
 
 function todayISO() {
@@ -113,6 +204,11 @@ function num(value, digits = 2) {
   });
 }
 
+/** Like `num`, but keeps whole numbers clean so an axis zero reads "0", not "0.0". */
+function trim(value, digits) {
+  return num(value, Number.isInteger(value) ? 0 : digits);
+}
+
 function formatValue(series, value) {
   if (!Number.isFinite(value)) return '—';
   const { unit, transform } = series;
@@ -129,7 +225,7 @@ function formatValue(series, value) {
     case 'usd':
       return Math.abs(value) >= 1000
         ? `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-        : `$${num(value, 2)}`;
+        : `$${trim(value, 2)}`;
     case 'k': {
       if (transform === 'mom_diff') return `${value >= 0 ? '+' : ''}${num(value, 0)}k`;
       return Math.abs(value) >= 1000 ? `${num(value / 1000, 2)}M` : `${num(value, 0)}k`;
@@ -143,7 +239,7 @@ function formatValue(series, value) {
     case 'count':
       return Math.abs(value) >= 1000 ? `${num(value / 1000, 0)}k` : num(value, 0);
     default:
-      return num(value, Math.abs(value) >= 1000 ? 0 : 1);
+      return Math.abs(value) >= 1000 ? num(value, 0) : trim(value, 1);
   }
 }
 
@@ -205,6 +301,7 @@ function configureChartDefaults() {
   defaults.elements.point.hitRadius = 12;
   defaults.elements.line.borderWidth = 1.8;
   defaults.elements.line.tension = 0;
+  Chart.register(crosshairPlugin);
 }
 
 function destroyChart(key) {
@@ -212,15 +309,25 @@ function destroyChart(key) {
   charts.delete(key);
 }
 
+function toTimestamps(dates) {
+  return dates.map((d) => Date.parse(`${d}T00:00:00Z`));
+}
+
 function points(dates, values) {
-  return dates.map((d, i) => ({ x: Date.parse(`${d}T00:00:00Z`), y: values[i] }));
+  return toTimestamps(dates).map((x, i) => ({ x, y: values[i] }));
 }
 
 function timeScale(extra = {}) {
   return {
     type: 'time',
     time: { unit: 'month' },
-    ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+    ticks: {
+      maxRotation: 0,
+      autoSkip: true,
+      autoSkipPadding: 24,
+      maxTicksLimit: 5,
+      padding: 6,
+    },
     grid: { color: 'rgba(37,45,59,0.6)', drawTicks: false },
     border: { display: false },
     ...extra,
@@ -236,50 +343,51 @@ function renderCardChart(canvas, series, view) {
   const color = colorFor(series.id);
 
   destroyChart(canvas.id);
-  charts.set(
-    canvas.id,
-    new Chart(canvas, {
-      type: 'line',
-      data: {
-        datasets: [
-          {
-            data: points(view.dates, view.values),
-            borderColor: color,
-            backgroundColor: `${color}1f`,
-            fill: true,
-          },
-        ],
-      },
-      options: {
-        parsing: false,
-        normalized: true,
-        plugins: {
-          legend: { display: false },
-          decimation: { enabled: true, algorithm: 'lttb', samples: 260 },
-          tooltip: {
-            displayColors: false,
-            callbacks: {
-              title: (items) => prettyDate(new Date(items[0].parsed.x).toISOString().slice(0, 10)),
-              label: (item) => formatValue(series, item.parsed.y),
-            },
-          },
+  const chart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          data: points(view.dates, view.values),
+          borderColor: color,
+          backgroundColor: `${color}1f`,
+          fill: true,
         },
-        interaction: { mode: 'index', intersect: false },
-        scales: {
-          x: timeScale(),
-          y: {
-            ticks: {
-              maxTicksLimit: 4,
-              callback: (v) => formatValue(series, v),
-            },
-            grid: { color: 'rgba(37,45,59,0.6)', drawTicks: false },
-            border: { display: false },
-            grace: '6%',
+      ],
+    },
+    options: {
+      parsing: false,
+      normalized: true,
+      layout: { padding: { top: 6, right: 8 } },
+      plugins: {
+        legend: { display: false },
+        decimation: { enabled: true, algorithm: 'lttb', samples: 260 },
+        // The shared crosshair reports values in the card header instead.
+        tooltip: { enabled: false },
+      },
+      scales: {
+        x: timeScale(),
+        y: {
+          ticks: {
+            maxTicksLimit: 5,
+            padding: 8,
+            callback: (v) => formatValue(series, v),
           },
+          grid: { color: 'rgba(37,45,59,0.6)', drawTicks: false },
+          border: { display: false },
+          grace: '8%',
         },
       },
-    })
-  );
+    },
+  });
+
+  charts.set(canvas.id, chart);
+  trackHover(chart, {
+    series,
+    dates: view.dates,
+    values: view.values,
+    lines: [{ timestamps: toTimestamps(view.dates), values: view.values, color }],
+  });
 }
 
 /* ---- Overview -------------------------------------------------------- */
@@ -549,6 +657,7 @@ function renderCompare() {
   destroyChart('compare');
 
   const datasets = [];
+  const lines = [];
   for (const id of state.selected) {
     const series = DATA.series.find((s) => s.id === id);
     if (!series) continue;
@@ -568,6 +677,7 @@ function renderCompare() {
       backgroundColor: colorFor(id),
       seriesId: id,
     });
+    lines.push({ timestamps: toTimestamps(view.dates), values, color: colorFor(id) });
   }
 
   // A log axis cannot render zero or negative values, which raw spreads and the
@@ -588,46 +698,53 @@ function renderCompare() {
 
   const useLog = state.logScale && allPositive;
   const indexed = state.compareMode === 'indexed';
-  charts.set(
-    'compare',
-    new Chart(canvas, {
-      type: 'line',
-      data: { datasets },
-      options: {
-        parsing: false,
-        normalized: true,
-        plugins: {
-          legend: { position: 'top', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
-          decimation: { enabled: true, algorithm: 'lttb', samples: 400 },
-          tooltip: {
-            callbacks: {
-              title: (items) => prettyDate(new Date(items[0].parsed.x).toISOString().slice(0, 10)),
-              label: (item) => {
-                const series = DATA.series.find((s) => s.id === item.dataset.seriesId);
-                const raw = indexed ? `${num(item.parsed.y, 1)}` : formatValue(series, item.parsed.y);
-                return `${series.name}: ${raw}`;
-              },
-            },
-          },
+  const chart = new Chart(canvas, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      parsing: false,
+      normalized: true,
+      layout: { padding: { top: 6, right: 10 } },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, padding: 16 },
         },
-        interaction: { mode: 'index', intersect: false },
-        scales: {
-          x: timeScale(),
-          y: {
-            type: useLog ? 'logarithmic' : 'linear',
-            ticks: { callback: (v) => (indexed ? num(v, 0) : num(v, 1)) },
-            grid: { color: 'rgba(37,45,59,0.6)', drawTicks: false },
-            border: { display: false },
-            title: {
-              display: indexed,
-              text: `Indexed to 100 at range start${useLog ? ' (log scale)' : ''}`,
-              color: '#8a93a6',
+        decimation: { enabled: true, algorithm: 'lttb', samples: 400 },
+        tooltip: {
+          padding: 10,
+          caretPadding: 12,
+          callbacks: {
+            title: (items) => prettyDate(new Date(items[0].parsed.x).toISOString().slice(0, 10)),
+            label: (item) => {
+              const series = DATA.series.find((s) => s.id === item.dataset.seriesId);
+              const raw = indexed ? num(item.parsed.y, 1) : formatValue(series, item.parsed.y);
+              return `  ${series.name}: ${raw}`;
             },
           },
         },
       },
-    })
-  );
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: timeScale(),
+        y: {
+          type: useLog ? 'logarithmic' : 'linear',
+          ticks: { padding: 8, callback: (v) => (indexed ? num(v, 0) : num(v, 1)) },
+          grid: { color: 'rgba(37,45,59,0.6)', drawTicks: false },
+          border: { display: false },
+          title: {
+            display: indexed,
+            text: `Indexed to 100 at range start${useLog ? ' (log scale)' : ''}`,
+            color: '#8a93a6',
+            padding: { bottom: 8 },
+          },
+        },
+      },
+    },
+  });
+
+  charts.set('compare', chart);
+  trackHover(chart, { lines });
 }
 
 /* ---- Correlation ----------------------------------------------------- */
