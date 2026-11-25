@@ -1,0 +1,886 @@
+/* Macro Dashboard — renders data/macro.json into charts, signals and a
+   correlation table. No build step; Chart.js is loaded from a CDN. */
+
+const PALETTE = [
+  '#4da3ff', '#f7b955', '#3fb950', '#f85149', '#bc8cff', '#56d4dd',
+  '#ff7b72', '#a5d6ff', '#d29922', '#7ee787', '#ffa198', '#d2a8ff',
+];
+
+const RANGES = {
+  '2020': () => '2020-01-01',
+  '5y': () => shiftYears(todayISO(), -5),
+  '3y': () => shiftYears(todayISO(), -3),
+  '1y': () => shiftYears(todayISO(), -1),
+  ytd: () => `${new Date().getUTCFullYear()}-01-01`,
+  max: () => '0000-01-01',
+};
+
+const state = {
+  view: 'overview',
+  range: '2020',
+  compareMode: 'indexed',
+  logScale: false,
+  selected: new Set(['SP500', 'CBBTCUSD', 'DFF', 'CPIAUCSL']),
+};
+
+let DATA = null;
+const charts = new Map();
+
+/* ---- Date helpers ---------------------------------------------------- */
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function shiftYears(iso, delta) {
+  const [y, m, d] = iso.split('-');
+  return `${Number(y) + delta}-${m}-${d}`;
+}
+
+function shiftMonths(iso, delta) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const total = y * 12 + (m - 1) + delta;
+  const year = Math.floor(total / 12);
+  const month = String((total % 12) + 1).padStart(2, '0');
+  return `${year}-${month}-${String(d).padStart(2, '0')}`;
+}
+
+function daysBetween(isoA, isoB) {
+  return Math.abs(Date.parse(isoA) - Date.parse(isoB)) / 86400000;
+}
+
+/** Index of the observation closest to `target`, assuming `dates` is sorted. */
+function closestIndex(dates, target) {
+  let lo = 0;
+  let hi = dates.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (dates[mid] < target) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo > 0 && daysBetween(dates[lo - 1], target) < daysBetween(dates[lo], target)) return lo - 1;
+  return lo;
+}
+
+/* ---- Transforms ------------------------------------------------------ */
+
+/** Applies the series' default transform, returning plain parallel arrays. */
+function transformed(series) {
+  const { dates, values, transform } = series;
+
+  if (transform === 'yoy') {
+    const outDates = [];
+    const outValues = [];
+    for (let i = 0; i < dates.length; i += 1) {
+      const target = shiftYears(dates[i], -1);
+      const j = closestIndex(dates, target);
+      // Monthly and quarterly series land within a few days of the anniversary;
+      // anything further apart is a gap and would produce a bogus growth rate.
+      if (j >= i || daysBetween(dates[j], target) > 45 || !values[j]) continue;
+      outDates.push(dates[i]);
+      outValues.push(((values[i] - values[j]) / Math.abs(values[j])) * 100);
+    }
+    return { dates: outDates, values: outValues };
+  }
+
+  if (transform === 'mom_diff') {
+    return {
+      dates: dates.slice(1),
+      values: values.slice(1).map((v, i) => v - values[i]),
+    };
+  }
+
+  return { dates, values };
+}
+
+function sliceFrom({ dates, values }, start) {
+  let i = 0;
+  while (i < dates.length && dates[i] < start) i += 1;
+  return { dates: dates.slice(i), values: values.slice(i) };
+}
+
+/** Transformed series clipped to the active range, memoised per render pass. */
+function viewOf(series) {
+  return sliceFrom(transformed(series), RANGES[state.range]());
+}
+
+/* ---- Formatting ------------------------------------------------------ */
+
+function num(value, digits = 2) {
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatValue(series, value) {
+  if (!Number.isFinite(value)) return '—';
+  const { unit, transform } = series;
+
+  if (transform === 'yoy') return `${num(value, 1)}%`;
+
+  switch (unit) {
+    case 'pct':
+      return `${num(value, 2)}%`;
+    case 'pp':
+      return `${num(value, 2)} pp`;
+    case 'z':
+      return num(value, 2);
+    case 'usd':
+      return Math.abs(value) >= 1000
+        ? `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+        : `$${num(value, 2)}`;
+    case 'k': {
+      if (transform === 'mom_diff') return `${value >= 0 ? '+' : ''}${num(value, 0)}k`;
+      return Math.abs(value) >= 1000 ? `${num(value / 1000, 2)}M` : `${num(value, 0)}k`;
+    }
+    case 'm': {
+      const abs = Math.abs(value);
+      if (abs >= 1e6) return `$${num(value / 1e6, 2)}T`;
+      if (abs >= 1e3) return `$${num(value / 1e3, 1)}B`;
+      return `$${num(value, 0)}M`;
+    }
+    case 'count':
+      return Math.abs(value) >= 1000 ? `${num(value / 1000, 0)}k` : num(value, 0);
+    default:
+      return num(value, Math.abs(value) >= 1000 ? 0 : 1);
+  }
+}
+
+/** True when a change is better expressed in points than in percent. */
+function isRateLike(series) {
+  return (
+    ['pct', 'pp', 'z'].includes(series.unit) ||
+    series.transform === 'yoy' ||
+    series.transform === 'mom_diff'
+  );
+}
+
+function changeOverRange(series, values) {
+  if (values.length < 2) return null;
+  const first = values[0];
+  const last = values.at(-1);
+
+  if (isRateLike(series)) {
+    const delta = last - first;
+    const sign = delta >= 0 ? '+' : '';
+    let text;
+    if (series.transform === 'mom_diff') text = `${sign}${num(delta, 0)}k`;
+    else if (series.unit === 'z') text = `${sign}${num(delta, 2)} pts`;
+    else text = `${sign}${num(delta, 2)} pp`;
+    return { delta, text };
+  }
+
+  const pct = ((last - first) / Math.abs(first)) * 100;
+  return { delta: pct, text: `${pct >= 0 ? '+' : ''}${num(pct, 1)}%` };
+}
+
+function changeClass(series, delta) {
+  if (Math.abs(delta) < 1e-9) return 'flat';
+  const rising = delta > 0;
+  if (series.direction === 'up_good') return rising ? 'up' : 'down';
+  if (series.direction === 'up_bad') return rising ? 'down' : 'up';
+  return 'flat';
+}
+
+function prettyDate(iso) {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+/* ---- Charts ---------------------------------------------------------- */
+
+function configureChartDefaults() {
+  const { defaults } = Chart;
+  defaults.color = '#8a93a6';
+  defaults.font.family = getComputedStyle(document.body).fontFamily;
+  defaults.font.size = 11;
+  defaults.animation = false;
+  defaults.maintainAspectRatio = false;
+  defaults.elements.point.radius = 0;
+  defaults.elements.point.hitRadius = 12;
+  defaults.elements.line.borderWidth = 1.8;
+  defaults.elements.line.tension = 0;
+}
+
+function destroyChart(key) {
+  charts.get(key)?.destroy();
+  charts.delete(key);
+}
+
+function points(dates, values) {
+  return dates.map((d, i) => ({ x: Date.parse(`${d}T00:00:00Z`), y: values[i] }));
+}
+
+function timeScale(extra = {}) {
+  return {
+    type: 'time',
+    time: { unit: 'month' },
+    ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+    grid: { color: 'rgba(37,45,59,0.6)', drawTicks: false },
+    border: { display: false },
+    ...extra,
+  };
+}
+
+function colorFor(id) {
+  const i = DATA.series.findIndex((s) => s.id === id);
+  return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
+}
+
+function renderCardChart(canvas, series, view) {
+  const color = colorFor(series.id);
+
+  destroyChart(canvas.id);
+  charts.set(
+    canvas.id,
+    new Chart(canvas, {
+      type: 'line',
+      data: {
+        datasets: [
+          {
+            data: points(view.dates, view.values),
+            borderColor: color,
+            backgroundColor: `${color}1f`,
+            fill: true,
+          },
+        ],
+      },
+      options: {
+        parsing: false,
+        normalized: true,
+        plugins: {
+          legend: { display: false },
+          decimation: { enabled: true, algorithm: 'lttb', samples: 260 },
+          tooltip: {
+            displayColors: false,
+            callbacks: {
+              title: (items) => prettyDate(new Date(items[0].parsed.x).toISOString().slice(0, 10)),
+              label: (item) => formatValue(series, item.parsed.y),
+            },
+          },
+        },
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: timeScale(),
+          y: {
+            ticks: {
+              maxTicksLimit: 4,
+              callback: (v) => formatValue(series, v),
+            },
+            grid: { color: 'rgba(37,45,59,0.6)', drawTicks: false },
+            border: { display: false },
+            grace: '6%',
+          },
+        },
+      },
+    })
+  );
+}
+
+/* ---- Overview -------------------------------------------------------- */
+
+function renderGroups() {
+  const host = document.getElementById('groups');
+  host.innerHTML = '';
+
+  for (const group of DATA.groups) {
+    const members = DATA.series.filter((s) => s.group === group.id);
+    if (!members.length) continue;
+
+    const section = document.createElement('section');
+    section.innerHTML = `
+      <div class="section-head"><h2>${group.name}</h2></div>
+      <div class="card-grid"></div>`;
+    const grid = section.querySelector('.card-grid');
+
+    for (const series of members) {
+      const view = viewOf(series);
+      const change = changeOverRange(series, view.values);
+      const latest = view.values.at(-1);
+      const canvasId = `chart-${series.id}`;
+
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="card-head">
+          <div>
+            <div class="card-title">${series.name}</div>
+            <div class="card-sub">${view.dates.length ? `as of ${prettyDate(view.dates.at(-1))}` : 'no data in range'}</div>
+          </div>
+          <div>
+            <div class="card-latest">${formatValue(series, latest)}</div>
+            <div class="card-change ${change ? changeClass(series, change.delta) : 'flat'}">
+              ${change ? `${change.text} over range` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="chart-box"><canvas id="${canvasId}"></canvas></div>
+        <p class="card-note">${series.note}</p>
+        <a class="card-link" href="https://fred.stlouisfed.org/series/${series.id}" target="_blank" rel="noopener">FRED: ${series.id} ↗</a>`;
+
+      grid.append(card);
+      renderCardChart(card.querySelector('canvas'), series, view);
+    }
+
+    host.append(section);
+  }
+}
+
+/* ---- Signals --------------------------------------------------------- */
+
+function latestOf(id, useTransform = true) {
+  const series = DATA.series.find((s) => s.id === id);
+  if (!series) return null;
+  const data = useTransform ? transformed(series) : series;
+  if (!data.values.length) return null;
+  return { series, value: data.values.at(-1), date: data.dates.at(-1), data };
+}
+
+function band(value, bands) {
+  return bands.find((b) => value < b.below) ?? bands.at(-1);
+}
+
+function buildSignals() {
+  const out = [];
+  const push = (label, value, scored, note) => {
+    if (!scored) return;
+    out.push({ label, value, status: scored.status, verdict: scored.verdict, note });
+  };
+
+  const curve = latestOf('T10Y2Y');
+  if (curve) {
+    push(
+      'Yield curve',
+      `${num(curve.value, 2)}%`,
+      band(curve.value, [
+        { below: -0.1, status: 'bad', verdict: 'Inverted' },
+        { below: 0.25, status: 'warn', verdict: 'Flat' },
+        { below: Infinity, status: 'good', verdict: 'Normal' },
+      ]),
+      '10-year minus 2-year Treasury. Inversion has led every modern recession.'
+    );
+  }
+
+  const credit = latestOf('BAA10Y');
+  if (credit) {
+    push(
+      'Credit spreads',
+      `${num(credit.value, 2)}%`,
+      band(credit.value, [
+        { below: 1.8, status: 'good', verdict: 'Tight' },
+        { below: 2.5, status: 'good', verdict: 'Normal' },
+        { below: 3.5, status: 'warn', verdict: 'Widening' },
+        { below: Infinity, status: 'bad', verdict: 'Stressed' },
+      ]),
+      'Baa corporate yield over the 10-year. Widening is the earliest risk-off tell.'
+    );
+  }
+
+  const nfci = latestOf('NFCI');
+  if (nfci) {
+    push(
+      'Financial conditions',
+      num(nfci.value, 2),
+      band(nfci.value, [
+        { below: -0.2, status: 'good', verdict: 'Loose' },
+        { below: 0.2, status: 'good', verdict: 'Neutral' },
+        { below: 0.5, status: 'warn', verdict: 'Tightening' },
+        { below: Infinity, status: 'bad', verdict: 'Tight' },
+      ]),
+      'Chicago Fed NFCI. Below zero means money is easier to come by than usual.'
+    );
+  }
+
+  const vix = latestOf('VIXCLS');
+  if (vix) {
+    push(
+      'Volatility',
+      num(vix.value, 1),
+      band(vix.value, [
+        { below: 15, status: 'good', verdict: 'Calm' },
+        { below: 20, status: 'good', verdict: 'Normal' },
+        { below: 30, status: 'warn', verdict: 'Elevated' },
+        { below: Infinity, status: 'bad', verdict: 'Panic' },
+      ]),
+      'VIX. Higher readings argue for smaller positions.'
+    );
+  }
+
+  const corePce = latestOf('PCEPILFE');
+  if (corePce) {
+    push(
+      'Inflation vs target',
+      `${num(corePce.value, 1)}%`,
+      band(corePce.value, [
+        { below: 2.2, status: 'good', verdict: 'At target' },
+        { below: 3, status: 'warn', verdict: 'Above target' },
+        { below: Infinity, status: 'bad', verdict: 'Running hot' },
+      ]),
+      "Core PCE year over year against the Fed's 2% goal."
+    );
+  }
+
+  const ff = latestOf('DFF');
+  const cpi = latestOf('CPIAUCSL');
+  if (ff && cpi) {
+    const real = ff.value - cpi.value;
+    push(
+      'Real policy rate',
+      `${num(real, 2)}%`,
+      band(real, [
+        { below: 0, status: 'good', verdict: 'Accommodative' },
+        { below: 1, status: 'good', verdict: 'Near neutral' },
+        { below: Infinity, status: 'warn', verdict: 'Restrictive' },
+      ]),
+      'Fed funds minus CPI inflation. Positive means policy is squeezing growth.'
+    );
+  }
+
+  const fed = DATA.series.find((s) => s.id === 'WALCL');
+  if (fed && fed.values.length > 14) {
+    const j = closestIndex(fed.dates, shiftMonths(fed.dates.at(-1), -3));
+    const pct = ((fed.values.at(-1) - fed.values[j]) / fed.values[j]) * 100;
+    push(
+      'Fed liquidity',
+      `${pct >= 0 ? '+' : ''}${num(pct, 1)}%`,
+      band(pct, [
+        { below: -0.5, status: 'warn', verdict: 'Tightening' },
+        { below: 0.5, status: 'good', verdict: 'Flat' },
+        { below: Infinity, status: 'good', verdict: 'Expanding' },
+      ]),
+      'Three-month change in the Fed balance sheet. Shrinking is QT.'
+    );
+  }
+
+  const sahm = latestOf('SAHMREALTIME');
+  if (sahm) {
+    push(
+      'Sahm rule',
+      num(sahm.value, 2),
+      band(sahm.value, [
+        { below: 0.3, status: 'good', verdict: 'Clear' },
+        { below: 0.5, status: 'warn', verdict: 'Rising' },
+        { below: Infinity, status: 'bad', verdict: 'Triggered' },
+      ]),
+      'Unemployment recession trigger. 0.50 and above has marked every downturn.'
+    );
+  }
+
+  const spx = DATA.series.find((s) => s.id === 'SP500');
+  if (spx) {
+    const peak = Math.max(...spx.values);
+    const drawdown = ((spx.values.at(-1) - peak) / peak) * 100;
+    push(
+      'S&P 500 drawdown',
+      `${num(drawdown, 1)}%`,
+      band(drawdown, [
+        { below: -20, status: 'bad', verdict: 'Bear market' },
+        { below: -10, status: 'warn', verdict: 'Correction' },
+        { below: -5, status: 'good', verdict: 'Pullback' },
+        { below: Infinity, status: 'good', verdict: 'Near highs' },
+      ]),
+      'Distance below the highest close in this dataset.'
+    );
+  }
+
+  const unrate = DATA.series.find((s) => s.id === 'UNRATE');
+  if (unrate && unrate.values.length > 12) {
+    const window = unrate.values.slice(-13);
+    const rise = unrate.values.at(-1) - Math.min(...window);
+    push(
+      'Unemployment trend',
+      `${rise >= 0 ? '+' : ''}${num(rise, 1)} pp`,
+      band(rise, [
+        { below: 0.3, status: 'good', verdict: 'Stable' },
+        { below: 0.5, status: 'warn', verdict: 'Drifting up' },
+        { below: Infinity, status: 'bad', verdict: 'Deteriorating' },
+      ]),
+      'Rise off the 12-month low. Labor markets break slowly, then quickly.'
+    );
+  }
+
+  return out;
+}
+
+function renderSignals() {
+  const host = document.getElementById('signal-grid');
+  host.innerHTML = buildSignals()
+    .map(
+      (s) => `
+      <div class="signal" data-status="${s.status}">
+        <div class="signal-label">${s.label}</div>
+        <div class="signal-value">${s.value}</div>
+        <div class="signal-verdict">${s.verdict}</div>
+        <div class="signal-note">${s.note}</div>
+      </div>`
+    )
+    .join('');
+}
+
+/* ---- Compare --------------------------------------------------------- */
+
+function renderComparePicker() {
+  const host = document.getElementById('compare-picker');
+  host.innerHTML = DATA.groups
+    .map((group) => {
+      const items = DATA.series
+        .filter((s) => s.group === group.id)
+        .map(
+          (s) => `
+          <label class="picker-item">
+            <input type="checkbox" value="${s.id}" ${state.selected.has(s.id) ? 'checked' : ''} />
+            <span class="swatch" style="background:${colorFor(s.id)}"></span>
+            <span>${s.name}</span>
+          </label>`
+        )
+        .join('');
+      return `<div class="picker-group"><h3>${group.name}</h3>${items}</div>`;
+    })
+    .join('');
+}
+
+function renderCompare() {
+  const canvas = document.getElementById('compare-chart');
+  destroyChart('compare');
+
+  const datasets = [];
+  for (const id of state.selected) {
+    const series = DATA.series.find((s) => s.id === id);
+    if (!series) continue;
+    const view = viewOf(series);
+    if (view.values.length < 2) continue;
+
+    const base = view.values[0];
+    const values =
+      state.compareMode === 'indexed' && base !== 0
+        ? view.values.map((v) => (v / base) * 100)
+        : view.values;
+
+    datasets.push({
+      label: series.name,
+      data: points(view.dates, values),
+      borderColor: colorFor(id),
+      backgroundColor: colorFor(id),
+      seriesId: id,
+    });
+  }
+
+  // A log axis cannot render zero or negative values, which raw spreads and the
+  // conditions index both produce.
+  const allPositive = datasets.every((d) => d.data.every((p) => p.y > 0));
+  const logToggle = document.getElementById('log-toggle');
+  logToggle.disabled = !allPositive;
+  logToggle.classList.toggle('is-active', state.logScale && allPositive);
+  logToggle.title = allPositive
+    ? 'Equal percentage moves take equal vertical space'
+    : 'Unavailable: a selected series has zero or negative values';
+
+  if (!datasets.length) {
+    destroyChart('compare');
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  const useLog = state.logScale && allPositive;
+  const indexed = state.compareMode === 'indexed';
+  charts.set(
+    'compare',
+    new Chart(canvas, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        parsing: false,
+        normalized: true,
+        plugins: {
+          legend: { position: 'top', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
+          decimation: { enabled: true, algorithm: 'lttb', samples: 400 },
+          tooltip: {
+            callbacks: {
+              title: (items) => prettyDate(new Date(items[0].parsed.x).toISOString().slice(0, 10)),
+              label: (item) => {
+                const series = DATA.series.find((s) => s.id === item.dataset.seriesId);
+                const raw = indexed ? `${num(item.parsed.y, 1)}` : formatValue(series, item.parsed.y);
+                return `${series.name}: ${raw}`;
+              },
+            },
+          },
+        },
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: timeScale(),
+          y: {
+            type: useLog ? 'logarithmic' : 'linear',
+            ticks: { callback: (v) => (indexed ? num(v, 0) : num(v, 1)) },
+            grid: { color: 'rgba(37,45,59,0.6)', drawTicks: false },
+            border: { display: false },
+            title: {
+              display: indexed,
+              text: `Indexed to 100 at range start${useLog ? ' (log scale)' : ''}`,
+              color: '#8a93a6',
+            },
+          },
+        },
+      },
+    })
+  );
+}
+
+/* ---- Correlation ----------------------------------------------------- */
+
+/** Collapses a series to one observation per month, then takes changes. */
+function monthlyChanges(series, start) {
+  const view = sliceFrom(transformed(series), start);
+  const byMonth = new Map();
+  view.dates.forEach((d, i) => byMonth.set(d.slice(0, 7), view.values[i]));
+
+  const months = [...byMonth.keys()].sort();
+  const useDiff = isRateLike(series);
+  const changes = new Map();
+
+  for (let i = 1; i < months.length; i += 1) {
+    const prev = byMonth.get(months[i - 1]);
+    const curr = byMonth.get(months[i]);
+    if (!Number.isFinite(prev) || !Number.isFinite(curr)) continue;
+    if (!useDiff && prev === 0) continue;
+    changes.set(months[i], useDiff ? curr - prev : ((curr - prev) / Math.abs(prev)) * 100);
+  }
+  return changes;
+}
+
+function pearson(a, b) {
+  const n = a.length;
+  if (n < 12) return null;
+  const meanA = a.reduce((s, v) => s + v, 0) / n;
+  const meanB = b.reduce((s, v) => s + v, 0) / n;
+  let cov = 0;
+  let varA = 0;
+  let varB = 0;
+  for (let i = 0; i < n; i += 1) {
+    const da = a[i] - meanA;
+    const db = b[i] - meanB;
+    cov += da * db;
+    varA += da * da;
+    varB += db * db;
+  }
+  if (varA === 0 || varB === 0) return null;
+  return cov / Math.sqrt(varA * varB);
+}
+
+function describeCorrelation(r) {
+  const strength = Math.abs(r) >= 0.6 ? 'Strong' : Math.abs(r) >= 0.3 ? 'Moderate' : 'Weak';
+  if (Math.abs(r) < 0.15) return 'Essentially unrelated month to month.';
+  return `${strength} ${r > 0 ? 'positive' : 'inverse'} relationship with the index.`;
+}
+
+function renderCorrelation() {
+  const table = document.getElementById('corr-table');
+  const start = RANGES[state.range]();
+  const spx = DATA.series.find((s) => s.id === 'SP500');
+  const spxChanges = monthlyChanges(spx, start);
+
+  const rows = DATA.series
+    .filter((s) => s.id !== 'SP500')
+    .map((series) => {
+      const changes = monthlyChanges(series, start);
+      const months = [...spxChanges.keys()].filter((m) => changes.has(m));
+      const r = pearson(
+        months.map((m) => spxChanges.get(m)),
+        months.map((m) => changes.get(m))
+      );
+      return { series, r, n: months.length };
+    })
+    .sort((a, b) => Math.abs(b.r ?? -1) - Math.abs(a.r ?? -1));
+
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Series</th>
+        <th>Correlation</th>
+        <th>What it means</th>
+        <th>Months</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows
+        .map(({ series, r, n }) => {
+          if (r === null) {
+            return `<tr><td>${series.name}</td><td class="num flat">n/a</td>
+              <td class="corr-desc">Not enough overlapping months in this range.</td>
+              <td class="num flat">${n}</td></tr>`;
+          }
+          const width = Math.round(Math.abs(r) * 100);
+          const color = r > 0 ? 'var(--good)' : 'var(--bad)';
+          return `<tr>
+            <td>${series.name}</td>
+            <td class="num" style="color:${color}">
+              <span class="corr-cell">
+                <span>${r >= 0 ? '+' : ''}${num(r, 2)}</span>
+                <span class="corr-bar" style="width:${width}%;background:${color}"></span>
+              </span>
+            </td>
+            <td class="corr-desc">${describeCorrelation(r)}</td>
+            <td class="num flat">${n}</td>
+          </tr>`;
+        })
+        .join('')}
+    </tbody>`;
+}
+
+/* ---- View plumbing --------------------------------------------------- */
+
+function renderActiveView() {
+  for (const view of document.querySelectorAll('.view')) {
+    view.hidden = view.id !== `view-${state.view}`;
+  }
+
+  if (state.view === 'overview') {
+    renderSignals();
+    renderGroups();
+  } else {
+    // Card charts are expensive to keep alive; drop them when hidden.
+    for (const key of [...charts.keys()]) {
+      if (key.startsWith('chart-')) destroyChart(key);
+    }
+  }
+
+  if (state.view === 'compare') renderCompare();
+  if (state.view === 'correlation') renderCorrelation();
+}
+
+function setActive(container, attr, value) {
+  for (const btn of container.children) {
+    btn.classList.toggle('is-active', btn.dataset[attr] === value);
+  }
+}
+
+/** Pushes `state` back onto the controls, for deep links and back/forward. */
+function syncControls() {
+  setActive(document.getElementById('tabs'), 'view', state.view);
+  setActive(document.getElementById('ranges'), 'range', state.range);
+  setActive(document.getElementById('compare-modes'), 'mode', state.compareMode);
+  for (const box of document.querySelectorAll('#compare-picker input')) {
+    box.checked = state.selected.has(box.value);
+  }
+}
+
+function syncHash() {
+  const params = new URLSearchParams({
+    view: state.view,
+    range: state.range,
+    mode: state.compareMode,
+    log: state.logScale ? '1' : '0',
+    s: [...state.selected].join(','),
+  });
+  history.replaceState(null, '', `#${params}`);
+}
+
+function readHash() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const view = params.get('view');
+  const range = params.get('range');
+  const mode = params.get('mode');
+  const selected = params.get('s');
+
+  if (['overview', 'compare', 'correlation'].includes(view)) state.view = view;
+  if (range && range in RANGES) state.range = range;
+  if (['indexed', 'raw'].includes(mode)) state.compareMode = mode;
+  if (params.has('log')) state.logScale = params.get('log') === '1';
+  // An explicit empty `s` means the user cleared the selection, so honour it.
+  if (selected !== null) state.selected = new Set(selected.split(',').filter(Boolean));
+}
+
+function wireControls() {
+  const tabs = document.getElementById('tabs');
+  const ranges = document.getElementById('ranges');
+  const modes = document.getElementById('compare-modes');
+
+  tabs.addEventListener('click', (event) => {
+    const view = event.target.dataset.view;
+    if (!view) return;
+    state.view = view;
+    setActive(tabs, 'view', view);
+    syncHash();
+    renderActiveView();
+  });
+
+  ranges.addEventListener('click', (event) => {
+    const range = event.target.dataset.range;
+    if (!range) return;
+    state.range = range;
+    setActive(ranges, 'range', range);
+    syncHash();
+    renderActiveView();
+  });
+
+  modes.addEventListener('click', (event) => {
+    const mode = event.target.dataset.mode;
+    if (!mode) return;
+    state.compareMode = mode;
+    setActive(modes, 'mode', mode);
+    syncHash();
+    renderCompare();
+  });
+
+  document.getElementById('log-toggle').addEventListener('click', () => {
+    state.logScale = !state.logScale;
+    syncHash();
+    renderCompare();
+  });
+
+  document.getElementById('compare-picker').addEventListener('change', (event) => {
+    const box = event.target;
+    if (!box.value) return;
+    if (box.checked) state.selected.add(box.value);
+    else state.selected.delete(box.value);
+    syncHash();
+    renderCompare();
+  });
+
+  document.getElementById('compare-clear').addEventListener('click', () => {
+    state.selected.clear();
+    for (const box of document.querySelectorAll('#compare-picker input')) box.checked = false;
+    syncHash();
+    renderCompare();
+  });
+
+  // Keeps shared links and the browser back button working once the page is open.
+  window.addEventListener('hashchange', () => {
+    readHash();
+    syncControls();
+    renderActiveView();
+  });
+}
+
+async function init() {
+  const loading = document.getElementById('loading');
+  try {
+    const res = await fetch('data/macro.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    DATA = await res.json();
+  } catch (error) {
+    loading.className = 'error';
+    loading.textContent = `Could not load data/macro.json (${error.message}).`;
+    return;
+  }
+
+  configureChartDefaults();
+  readHash();
+  loading.remove();
+
+  document.getElementById('updated').textContent = `${DATA.series.length} series · data through ${prettyDate(
+    DATA.series.reduce((latest, s) => (s.dates.at(-1) > latest ? s.dates.at(-1) : latest), '0000-01-01')
+  )} · refreshed ${new Date(DATA.updated).toLocaleString()}`;
+
+  wireControls();
+  renderComparePicker();
+  syncControls();
+  renderActiveView();
+  syncHash();
+}
+
+init();

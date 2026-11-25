@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Macro Dashboard — markets, rates and the economy since 2020</title>
+    <meta
+      name="description"
+      content="Historical trends for the S&P 500, Bitcoin, Fed funds, inflation, unemployment, housing and credit since 2020. Data from FRED, updated daily."
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>"
+    />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <h1>Macro Dashboard</h1>
+        <p class="tagline">
+          Markets, rates and the economy since 2020. Every number comes from
+          <a href="https://fred.stlouisfed.org/" target="_blank" rel="noopener">FRED</a>
+          and refreshes daily.
+        </p>
+        <p class="updated" id="updated"></p>
+      </div>
+    </header>
+
+    <nav class="toolbar">
+      <div class="wrap toolbar-inner">
+        <div class="tabs" role="tablist" id="tabs">
+          <button class="tab is-active" role="tab" data-view="overview">Overview</button>
+          <button class="tab" role="tab" data-view="compare">Compare</button>
+          <button class="tab" role="tab" data-view="correlation">Correlation</button>
+        </div>
+        <div class="ranges" id="ranges" aria-label="Date range">
+          <button class="range is-active" data-range="2020">Since 2020</button>
+          <button class="range" data-range="5y">5Y</button>
+          <button class="range" data-range="3y">3Y</button>
+          <button class="range" data-range="1y">1Y</button>
+          <button class="range" data-range="ytd">YTD</button>
+          <button class="range" data-range="max">Max</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="wrap" id="main">
+      <p class="loading" id="loading">Loading data…</p>
+
+      <!-- Overview ---------------------------------------------------->
+      <section class="view" id="view-overview" hidden>
+        <section class="signals">
+          <div class="section-head">
+            <h2>Signals right now</h2>
+            <p>
+              The readings traders watch first, scored against their usual ranges. This is context,
+              not advice.
+            </p>
+          </div>
+          <div class="signal-grid" id="signal-grid"></div>
+        </section>
+        <div id="groups"></div>
+      </section>
+
+      <!-- Compare ----------------------------------------------------->
+      <section class="view" id="view-compare" hidden>
+        <div class="section-head">
+          <h2>Compare series</h2>
+          <p>
+            Pick any combination. Indexed mode rebases everything to 100 at the start of the range so
+            series with different units sit on one axis.
+          </p>
+        </div>
+        <div class="compare-controls">
+          <div class="control-row">
+            <div class="modes" id="compare-modes">
+              <button class="mode is-active" data-mode="indexed">Indexed to 100</button>
+              <button class="mode" data-mode="raw">Raw values</button>
+            </div>
+            <div class="modes">
+              <button class="mode" id="log-toggle" title="Equal percentage moves take equal vertical space">
+                Log scale
+              </button>
+            </div>
+          </div>
+          <button class="link-btn" id="compare-clear">Clear all</button>
+        </div>
+        <div class="chart-box chart-box--large">
+          <canvas id="compare-chart"></canvas>
+        </div>
+        <div class="picker" id="compare-picker"></div>
+      </section>
+
+      <!-- Correlation ------------------------------------------------->
+      <section class="view" id="view-correlation" hidden>
+        <div class="section-head">
+          <h2>What actually moves with the S&amp;P 500</h2>
+          <p>
+            Pearson correlation of month-over-month changes against the S&amp;P 500 over the selected
+            range. Near +1 moves with the index, near &minus;1 moves against it, near 0 is unrelated.
+            Correlation is not causation and it drifts between regimes.
+          </p>
+        </div>
+        <div class="corr-table-wrap">
+          <table class="corr-table" id="corr-table"></table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          Source: Federal Reserve Bank of St. Louis (FRED). Built by
+          <a href="https://github.com/akoushke" target="_blank" rel="noopener">akoushke</a> &middot;
+          <a href="https://github.com/akoushke/macro-dashboard" target="_blank" rel="noopener"
+            >source on GitHub</a
+          >
+        </p>
+        <p class="disclaimer">
+          For information only. Nothing here is investment advice or a recommendation to buy or sell
+          any security.
+        </p>
+      </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
