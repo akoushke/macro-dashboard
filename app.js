@@ -16,7 +16,10 @@ const RANGES = {
 };
 
 const state = {
-  view: 'overview',
+  // First-time visitors land in the tutorial; the hash restores a chosen view.
+  view: 'learn',
+  level: 1,
+  lesson: 0,
   range: '2020',
   compareMode: 'indexed',
   logScale: false,
@@ -454,7 +457,7 @@ function renderGroups() {
   host.innerHTML = '';
 
   for (const group of DATA.groups) {
-    const members = DATA.series.filter((s) => s.group === group.id);
+    const members = DATA.series.filter((s) => s.group === group.id && s.level <= state.level);
     if (!members.length) continue;
 
     const section = document.createElement('section');
@@ -501,6 +504,206 @@ function renderGroups() {
   }
 }
 
+/* ---- Learn ------------------------------------------------------------
+   A linear tutorial. Lesson content lives in lessons.js; anything numeric is
+   computed from the same data the dashboard uses, so the tutorial can never
+   quote a figure the charts disagree with. */
+
+const seriesById = (id) => DATA.series.find((s) => s.id === id);
+
+/** Value of a series on a given date, using the last reading at or before it.
+    Applies the series' transform so an inflation row reports the rate, not the
+    underlying price index. */
+function valueOn(series, iso) {
+  const data = transformed(series);
+  const i = iso === 'latest' ? data.dates.length - 1 : closestIndexAtOrBefore(data.dates, iso);
+  if (i < 0) return null;
+  return { value: data.values[i], date: data.dates[i] };
+}
+
+function closestIndexAtOrBefore(dates, iso) {
+  if (!dates.length || dates[0] > iso) return -1;
+  let lo = 0;
+  let hi = dates.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (dates[mid] <= iso) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+/** Actual forward price change, so case studies report fact rather than memory. */
+function forwardReturn(id, fromIso, months) {
+  const series = seriesById(id);
+  if (!series) return null;
+  const start = valueOn(series, fromIso);
+  const end = valueOn(series, shiftMonths(start.date, months));
+  if (!start || !end || end.date <= start.date) return null;
+  return ((end.value - start.value) / start.value) * 100;
+}
+
+function lessonChart(series) {
+  const view = sliceFrom(transformed(series), '2020-01-01');
+  return `
+    <div class="lesson-chart">
+      <div class="lesson-chart-head">
+        <div>
+          <div class="card-title">${series.name}</div>
+          <div class="card-sub">${series.note}</div>
+        </div>
+        <div class="card-latest">${formatValue(series, view.values.at(-1))}</div>
+      </div>
+      <div class="chart-box"><canvas id="chart-lesson"></canvas></div>
+    </div>`;
+}
+
+function thresholdTable({ intro, columns, rows }) {
+  return `
+    <div class="lesson-table">
+      ${intro ? `<p class="lesson-table-intro">${intro}</p>` : ''}
+      <table>
+        <thead><tr>${columns.map((c) => `<th>${c}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${rows.map((r) => `<tr>${r.map((c, i) => `<td${i === 0 ? ' class="key-col"' : ''}>${c}</td>`).join('')}</tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function caseStudyBlock({ series: ids, moments }) {
+  const rows = ids
+    .map((id) => {
+      const series = seriesById(id);
+      if (!series) return '';
+      const cells = moments
+        .map((m) => {
+          const hit = valueOn(series, m.date);
+          return `<td>${hit ? formatValue(series, hit.value) : '—'}</td>`;
+        })
+        .join('');
+      return `<tr><td class="key-col">${series.name}</td>${cells}</tr>`;
+    })
+    .join('');
+
+  const forward = moments
+    .map((m) => {
+      const r = forwardReturn('SP500', m.date, 12);
+      if (r === null) return '<td class="fwd">still running</td>';
+      return `<td class="fwd ${r >= 0 ? 'up' : 'down'}">${r >= 0 ? '+' : ''}${num(r, 1)}%</td>`;
+    })
+    .join('');
+
+  const notes = moments
+    .map(
+      (m) => `
+      <div class="moment">
+        <h4>${m.label} <span>${m.date === 'latest' ? 'now' : prettyDate(m.date)}</span></h4>
+        <p>${m.what}</p>
+        <p class="moment-lesson">${m.lesson}</p>
+      </div>`
+    )
+    .join('');
+
+  return `
+    <div class="lesson-table case-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Reading</th>
+            ${moments.map((m) => `<th>${m.label}<br /><span class="th-date">${m.date === 'latest' ? 'now' : prettyDate(m.date)}</span></th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+          <tr class="fwd-row"><td class="key-col">S&amp;P 500 one year later</td>${forward}</tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="moments">${notes}</div>`;
+}
+
+function checklistBlock(items) {
+  return `<ol class="checklist">${items
+    .map((i) => `<li><strong>${i.q}</strong><span>${i.a}</span></li>`)
+    .join('')}</ol>`;
+}
+
+function renderLessonNav() {
+  const lessons = window.LESSONS;
+  let html = '';
+  let chapter = null;
+  lessons.forEach((lesson, i) => {
+    if (lesson.chapter !== chapter) {
+      chapter = lesson.chapter;
+      html += `<div class="lesson-chapter">${chapter}</div>`;
+    }
+    html += `
+      <a class="side-link lesson-link${i === state.lesson ? ' is-active' : ''}"
+         href="#lesson-${i}" data-lesson="${i}">
+        <span>${lesson.title}</span>
+        ${i < state.lesson ? '<span class="side-count done">✓</span>' : ''}
+      </a>`;
+  });
+  document.getElementById('lesson-nav').innerHTML = html;
+}
+
+function renderLearn() {
+  const lessons = window.LESSONS;
+  const lesson = lessons[state.lesson];
+  destroyChart('chart-lesson');
+
+  const series = lesson.series ? seriesById(lesson.series) : null;
+  const parts = [
+    `<div class="lesson-chapter-tag">${lesson.chapter}</div>`,
+    `<h2 class="lesson-title">${lesson.title}</h2>`,
+    ...lesson.body,
+    series ? lessonChart(series) : '',
+    lesson.thresholds ? thresholdTable(lesson.thresholds) : '',
+    ...(lesson.body2 ?? []),
+    lesson.caseStudy ? caseStudyBlock(lesson.caseStudy) : '',
+    lesson.checklist ? checklistBlock(lesson.checklist) : '',
+    `<div class="takeaway"><strong>The point</strong>${lesson.takeaway}</div>`,
+  ];
+
+  document.getElementById('lesson').innerHTML = parts.join('');
+
+  if (series) {
+    renderCardChart(
+      document.getElementById('chart-lesson'),
+      series,
+      sliceFrom(transformed(series), '2020-01-01')
+    );
+  }
+
+  document.getElementById('learn-bar').style.width = `${((state.lesson + 1) / lessons.length) * 100}%`;
+  document.getElementById('lesson-count').textContent = `Lesson ${state.lesson + 1} of ${lessons.length}`;
+  document.getElementById('lesson-prev').disabled = state.lesson === 0;
+  const next = document.getElementById('lesson-next');
+  next.disabled = state.lesson === lessons.length - 1;
+  next.textContent = state.lesson === lessons.length - 1 ? 'Finished' : 'Next →';
+
+  renderLessonNav();
+}
+
+function goToLesson(index) {
+  state.lesson = Math.max(0, Math.min(index, window.LESSONS.length - 1));
+  syncHash();
+  renderLearn();
+  document.getElementById('view-learn').scrollIntoView({ block: 'start' });
+}
+
+function wireLearn() {
+  document.getElementById('lesson-prev').addEventListener('click', () => goToLesson(state.lesson - 1));
+  document.getElementById('lesson-next').addEventListener('click', () => goToLesson(state.lesson + 1));
+  document.getElementById('lesson-nav').addEventListener('click', (event) => {
+    const link = event.target.closest('.lesson-link');
+    if (!link) return;
+    event.preventDefault();
+    goToLesson(Number(link.dataset.lesson));
+  });
+}
+
 /* ---- Section navigation ----------------------------------------------
    Lists the Overview's sections down the left and highlights whichever one the
    reader is currently looking at. */
@@ -513,7 +716,7 @@ function sectionList() {
       .map((group) => ({
         id: `sec-${group.id}`,
         label: group.name,
-        count: DATA.series.filter((s) => s.group === group.id).length,
+        count: DATA.series.filter((s) => s.group === group.id && s.level <= state.level).length,
       }))
       .filter((entry) => entry.count > 0),
   ];
@@ -1192,6 +1395,11 @@ function renderActiveView() {
     }
   }
 
+  // The toolbar's range and detail controls only mean something on Overview.
+  document.getElementById('ranges').hidden = state.view === 'learn';
+  document.getElementById('levels').hidden = state.view !== 'overview';
+
+  if (state.view === 'learn') renderLearn();
   if (state.view === 'compare') renderCompare();
   if (state.view === 'correlation') renderCorrelation();
 }
@@ -1206,6 +1414,7 @@ function setActive(container, attr, value) {
 function syncControls() {
   setActive(document.getElementById('tabs'), 'view', state.view);
   setActive(document.getElementById('ranges'), 'range', state.range);
+  setActive(document.getElementById('levels'), 'level', String(state.level));
   setActive(document.getElementById('compare-modes'), 'mode', state.compareMode);
   for (const box of document.querySelectorAll('#compare-picker input')) {
     box.checked = state.selected.has(box.value);
@@ -1216,6 +1425,8 @@ function syncHash() {
   const params = new URLSearchParams({
     view: state.view,
     range: state.range,
+    level: state.level,
+    lesson: state.lesson,
     mode: state.compareMode,
     log: state.logScale ? '1' : '0',
     s: [...state.selected].join(','),
@@ -1230,8 +1441,12 @@ function readHash() {
   const mode = params.get('mode');
   const selected = params.get('s');
 
-  if (['overview', 'compare', 'correlation'].includes(view)) state.view = view;
+  if (['learn', 'overview', 'compare', 'correlation'].includes(view)) state.view = view;
   if (range && range in RANGES) state.range = range;
+  const level = Number(params.get('level'));
+  if ([1, 2, 3].includes(level)) state.level = level;
+  const lesson = Number(params.get('lesson'));
+  if (Number.isInteger(lesson) && lesson >= 0 && lesson < window.LESSONS.length) state.lesson = lesson;
   if (['indexed', 'raw'].includes(mode)) state.compareMode = mode;
   if (params.has('log')) state.logScale = params.get('log') === '1';
   // An explicit empty `s` means the user cleared the selection, so honour it.
@@ -1257,6 +1472,16 @@ function wireControls() {
     if (!range) return;
     state.range = range;
     setActive(ranges, 'range', range);
+    syncHash();
+    renderActiveView();
+  });
+
+  const levels = document.getElementById('levels');
+  levels.addEventListener('click', (event) => {
+    const level = event.target.dataset.level;
+    if (!level) return;
+    state.level = Number(level);
+    setActive(levels, 'level', level);
     syncHash();
     renderActiveView();
   });
@@ -1323,6 +1548,7 @@ async function init() {
   initHelp();
   wireControls();
   wireSideNav();
+  wireLearn();
   renderComparePicker();
   syncControls();
   renderActiveView();

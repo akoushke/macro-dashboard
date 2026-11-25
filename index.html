@@ -33,6 +33,14 @@
           <button
             class="tab is-active"
             role="tab"
+            data-view="learn"
+            data-help="Learn|A guided walk-through that starts from nothing: what each chart measures, what the thresholds are, and how to turn that into a repeatable decision. Start here if the dashboard looks like noise."
+          >
+            Learn
+          </button>
+          <button
+            class="tab"
+            role="tab"
             data-view="overview"
             data-help="Overview|Every series as its own chart, grouped by theme. Hover any chart and the same date line appears on all of them, so you can read all 26 metrics at one moment in time."
           >
@@ -57,6 +65,16 @@
         </div>
         <div
           class="ranges"
+          id="levels"
+          aria-label="How many metrics to show"
+          data-help="How much to show|Core is the eight metrics worth learning first. Standard adds the usual working set. Everything shows all 37. Start at Core — you can turn the rest on once the basics read easily."
+        >
+          <button class="range is-active" data-level="1">Core</button>
+          <button class="range" data-level="2">Standard</button>
+          <button class="range" data-level="3">Everything</button>
+        </div>
+        <div
+          class="ranges"
           id="ranges"
           aria-label="Date range"
           data-help="Date range|Sets the window for every chart, every change figure and the correlations. Since 2020 spans the COVID crash, the 2021 melt-up, the rate-hike cycle and everything after."
@@ -73,6 +91,22 @@
 
     <main class="wrap" id="main">
       <p class="loading" id="loading">Loading data…</p>
+
+      <!-- Learn ------------------------------------------------------->
+      <section class="view learn-layout" id="view-learn" hidden>
+        <aside class="side-nav" aria-label="Lessons">
+          <nav id="lesson-nav"></nav>
+        </aside>
+        <div class="learn-main">
+          <div class="learn-progress"><div id="learn-bar"></div></div>
+          <article id="lesson"></article>
+          <div class="learn-foot">
+            <button class="lesson-btn" id="lesson-prev">← Previous</button>
+            <span class="lesson-count" id="lesson-count"></span>
+            <button class="lesson-btn lesson-btn--primary" id="lesson-next">Next →</button>
+          </div>
+        </div>
+      </section>
 
       <!-- Overview ---------------------------------------------------->
       <section class="view overview-layout" id="view-overview" hidden>
@@ -188,6 +222,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="lessons.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

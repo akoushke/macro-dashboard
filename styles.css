@@ -150,6 +150,318 @@ main {
   color: var(--bad);
 }
 
+/* ---- Learn ---------------------------------------------------------- */
+.learn-layout[hidden] {
+  display: none;
+}
+
+.learn-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+}
+
+.learn-main {
+  max-width: 760px;
+  padding-top: 32px;
+}
+
+.learn-progress {
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 26px;
+}
+
+#learn-bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+
+.lesson-chapter-tag {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.lesson-title {
+  margin: 8px 0 20px;
+  font-size: 27px;
+  line-height: 1.25;
+  letter-spacing: -0.4px;
+}
+
+#lesson p {
+  margin: 0 0 15px;
+  font-size: 15px;
+  line-height: 1.68;
+  color: #c3cad8;
+}
+
+#lesson p strong {
+  color: var(--text);
+}
+
+#lesson em {
+  color: var(--text);
+  font-style: italic;
+}
+
+.lesson-chapter {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  opacity: 0.7;
+  padding: 16px 10px 5px 13px;
+}
+
+.lesson-chapter:first-child {
+  padding-top: 0;
+}
+
+.lesson-link span:first-child {
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.side-count.done {
+  background: none;
+  color: var(--good);
+  padding: 0;
+}
+
+/* Charts embedded in a lesson */
+.lesson-chart {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px 12px;
+  margin: 22px 0;
+}
+
+.lesson-chart-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.lesson-chart .card-sub {
+  max-width: 48ch;
+  line-height: 1.45;
+}
+
+/* Threshold and case-study tables */
+.lesson-table {
+  margin: 22px 0;
+}
+
+.lesson-table-intro {
+  font-size: 13px !important;
+  color: var(--muted) !important;
+  margin-bottom: 10px !important;
+}
+
+.lesson-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 13.5px;
+}
+
+.lesson-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  font-weight: 500;
+  background: var(--surface-2);
+  vertical-align: bottom;
+}
+
+.lesson-table td {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  color: #c3cad8;
+  line-height: 1.5;
+  vertical-align: top;
+}
+
+.lesson-table td.key-col {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.th-date {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.7;
+}
+
+.case-table {
+  overflow-x: auto;
+}
+
+.case-table td {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fwd-row td {
+  border-top: 1px solid var(--muted);
+  font-weight: 600;
+}
+
+.fwd-row .key-col {
+  white-space: normal;
+}
+
+/* Case-study commentary */
+.moments {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0;
+}
+
+.moment {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.moment h4 {
+  margin: 0 0 7px;
+  font-size: 14px;
+}
+
+.moment h4 span {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.moment p {
+  margin: 0 0 8px !important;
+  font-size: 13.5px !important;
+}
+
+.moment-lesson {
+  color: var(--text) !important;
+  margin-bottom: 0 !important;
+}
+
+/* Checklist */
+.checklist {
+  list-style: none;
+  counter-reset: none;
+  padding: 0;
+  margin: 22px 0;
+  display: grid;
+  gap: 10px;
+}
+
+.checklist li {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px 16px;
+}
+
+.checklist strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.checklist span {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* Takeaway */
+.takeaway {
+  margin: 26px 0 0;
+  padding: 15px 18px;
+  background: rgba(77, 163, 255, 0.07);
+  border: 1px solid rgba(77, 163, 255, 0.25);
+  border-radius: var(--radius);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+.takeaway strong {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+
+.learn-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 30px 0 10px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.lesson-btn {
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.lesson-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.lesson-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.lesson-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06121f;
+  font-weight: 600;
+}
+
+.lesson-btn--primary:hover:not(:disabled) {
+  background: #68b1ff;
+}
+
+.lesson-count {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
 /* ---- Section navigation -------------------------------------------- */
 .overview-layout[hidden] {
   display: none;
@@ -738,9 +1050,22 @@ main {
 /* Below this the sidebar costs more width than it saves scrolling, so it
    becomes a horizontal strip above the content. */
 @media (max-width: 1000px) {
-  .overview-layout {
+  .overview-layout,
+  .learn-layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
+  }
+
+  .learn-main {
+    padding-top: 20px;
+  }
+
+  .lesson-chapter {
+    display: none;
+  }
+
+  .lesson-link span:first-child {
+    white-space: nowrap;
   }
 
   .side-nav {

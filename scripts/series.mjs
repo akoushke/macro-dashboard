@@ -70,6 +70,7 @@ export const SERIES = [
   // sidesteps the CORS headers these APIs do not send.
   {
     id: 'CNNFG',
+    level: 1,
     source: 'cnn',
     name: 'Fear & Greed (Stocks)',
     group: 'sentiment',
@@ -83,6 +84,7 @@ export const SERIES = [
   },
   {
     id: 'CRYPTOFG',
+    level: 2,
     source: 'cryptofng',
     name: 'Fear & Greed (Crypto)',
     group: 'sentiment',
@@ -96,6 +98,7 @@ export const SERIES = [
   },
   {
     id: 'UMCSENT',
+    level: 2,
     name: 'Consumer Sentiment',
     group: 'sentiment',
     unit: 'index',
@@ -105,6 +108,7 @@ export const SERIES = [
   },
   {
     id: 'MICH',
+    level: 3,
     name: 'Inflation Expectations',
     group: 'sentiment',
     unit: 'pct',
@@ -116,6 +120,7 @@ export const SERIES = [
   // ---- Markets -------------------------------------------------------
   {
     id: 'SP500',
+    level: 1,
     name: 'S&P 500',
     group: 'markets',
     unit: 'index',
@@ -125,6 +130,7 @@ export const SERIES = [
   },
   {
     id: 'NASDAQCOM',
+    level: 2,
     name: 'Nasdaq Composite',
     group: 'markets',
     unit: 'index',
@@ -134,6 +140,7 @@ export const SERIES = [
   },
   {
     id: 'CBBTCUSD',
+    level: 1,
     name: 'Bitcoin',
     group: 'markets',
     unit: 'usd',
@@ -143,6 +150,7 @@ export const SERIES = [
   },
   {
     id: 'VIXCLS',
+    level: 2,
     name: 'VIX (volatility)',
     group: 'markets',
     unit: 'index',
@@ -152,6 +160,7 @@ export const SERIES = [
   },
   {
     id: 'DTWEXBGS',
+    level: 3,
     name: 'US Dollar Index',
     group: 'markets',
     unit: 'index',
@@ -163,6 +172,7 @@ export const SERIES = [
   // ---- Rates & Credit ------------------------------------------------
   {
     id: 'DFF',
+    level: 1,
     name: 'Fed Funds Rate',
     group: 'rates',
     unit: 'pct',
@@ -172,6 +182,7 @@ export const SERIES = [
   },
   {
     id: 'DGS10',
+    level: 2,
     name: '10-Year Treasury',
     group: 'rates',
     unit: 'pct',
@@ -181,6 +192,7 @@ export const SERIES = [
   },
   {
     id: 'DGS2',
+    level: 3,
     name: '2-Year Treasury',
     group: 'rates',
     unit: 'pct',
@@ -190,6 +202,7 @@ export const SERIES = [
   },
   {
     id: 'T10Y2Y',
+    level: 1,
     name: '10Y-2Y Yield Spread',
     group: 'rates',
     unit: 'pct',
@@ -199,6 +212,7 @@ export const SERIES = [
   },
   {
     id: 'BAA10Y',
+    level: 2,
     name: 'Corporate Credit Spread',
     group: 'rates',
     unit: 'pct',
@@ -208,6 +222,7 @@ export const SERIES = [
   },
   {
     id: 'NFCI',
+    level: 3,
     name: 'Financial Conditions',
     group: 'rates',
     unit: 'z',
@@ -219,6 +234,7 @@ export const SERIES = [
   // ---- Inflation -----------------------------------------------------
   {
     id: 'CPIAUCSL',
+    level: 1,
     name: 'CPI Inflation',
     group: 'inflation',
     unit: 'pct',
@@ -228,6 +244,7 @@ export const SERIES = [
   },
   {
     id: 'CPILFESL',
+    level: 3,
     name: 'Core CPI',
     group: 'inflation',
     unit: 'pct',
@@ -237,6 +254,7 @@ export const SERIES = [
   },
   {
     id: 'PCEPILFE',
+    level: 2,
     name: 'Core PCE',
     group: 'inflation',
     unit: 'pct',
@@ -248,6 +266,7 @@ export const SERIES = [
   // ---- Labor ---------------------------------------------------------
   {
     id: 'UNRATE',
+    level: 1,
     name: 'Unemployment Rate',
     group: 'labor',
     unit: 'pct',
@@ -257,6 +276,7 @@ export const SERIES = [
   },
   {
     id: 'PAYEMS',
+    level: 3,
     name: 'Nonfarm Payrolls (monthly change)',
     group: 'labor',
     unit: 'k',
@@ -266,6 +286,7 @@ export const SERIES = [
   },
   {
     id: 'ICSA',
+    level: 2,
     name: 'Initial Jobless Claims',
     group: 'labor',
     unit: 'count',
@@ -275,6 +296,7 @@ export const SERIES = [
   },
   {
     id: 'SAHMREALTIME',
+    level: 3,
     name: 'Sahm Rule Indicator',
     group: 'labor',
     unit: 'pp',
@@ -286,6 +308,7 @@ export const SERIES = [
   // ---- Buying & Selling Activity -------------------------------------
   {
     id: 'HSN1F',
+    level: 2,
     name: 'New Home Sales',
     group: 'activity',
     unit: 'k',
@@ -295,6 +318,7 @@ export const SERIES = [
   },
   {
     id: 'NEWLISCOUUS',
+    level: 3,
     name: 'New Listings',
     group: 'activity',
     unit: 'count',
@@ -304,6 +328,7 @@ export const SERIES = [
   },
   {
     id: 'ACTLISCOUUS',
+    level: 3,
     name: 'Homes For Sale',
     group: 'activity',
     unit: 'count',
@@ -313,6 +338,7 @@ export const SERIES = [
   },
   {
     id: 'MEDDAYONMARUS',
+    level: 2,
     name: 'Days To Sell A Home',
     group: 'activity',
     unit: 'days',
@@ -322,6 +348,7 @@ export const SERIES = [
   },
   {
     id: 'MSACSR',
+    level: 1,
     name: 'Months Of Housing Supply',
     group: 'activity',
     unit: 'months',
@@ -331,6 +358,7 @@ export const SERIES = [
   },
   {
     id: 'BOGZ1FL663067003Q',
+    level: 3,
     name: 'Stock Margin Debt',
     group: 'activity',
     unit: 'pct',
@@ -340,6 +368,7 @@ export const SERIES = [
   },
   {
     id: 'BOGZ1FL153064486Q',
+    level: 3,
     name: 'Household Stock Allocation',
     group: 'activity',
     unit: 'pct',
@@ -349,6 +378,7 @@ export const SERIES = [
   },
   {
     id: 'PSAVERT',
+    level: 2,
     name: 'Personal Saving Rate',
     group: 'activity',
     unit: 'pct',
@@ -360,6 +390,7 @@ export const SERIES = [
   // ---- Real Estate ---------------------------------------------------
   {
     id: 'CSUSHPINSA',
+    level: 1,
     name: 'Case-Shiller Home Prices',
     group: 'housing',
     unit: 'pct',
@@ -369,6 +400,7 @@ export const SERIES = [
   },
   {
     id: 'MORTGAGE30US',
+    level: 2,
     name: '30-Year Mortgage Rate',
     group: 'housing',
     unit: 'pct',
@@ -378,6 +410,7 @@ export const SERIES = [
   },
   {
     id: 'HOUST',
+    level: 3,
     name: 'Housing Starts',
     group: 'housing',
     unit: 'k',
@@ -389,6 +422,7 @@ export const SERIES = [
   // ---- Economy & Liquidity -------------------------------------------
   {
     id: 'GDPC1',
+    level: 3,
     name: 'Real GDP',
     group: 'economy',
     unit: 'pct',
@@ -398,6 +432,7 @@ export const SERIES = [
   },
   {
     id: 'M2SL',
+    level: 2,
     name: 'M2 Money Supply',
     group: 'economy',
     unit: 'pct',
@@ -407,6 +442,7 @@ export const SERIES = [
   },
   {
     id: 'WALCL',
+    level: 2,
     name: 'Fed Balance Sheet',
     group: 'economy',
     unit: 'm',
@@ -416,6 +452,7 @@ export const SERIES = [
   },
   {
     id: 'RSAFS',
+    level: 3,
     name: 'Retail Sales',
     group: 'economy',
     unit: 'pct',

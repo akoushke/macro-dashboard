@@ -11,6 +11,20 @@ no backend and no client-side rate limits.
 
 ## What it shows
 
+**Learn** — a 13-lesson walkthrough, in four chapters, that assumes no finance background and
+builds up to a repeatable buy/sell process. It starts with how to read a chart at all, then covers
+what actually moves prices (the cost of money, inflation, fear and greed, credit spreads, the yield
+curve), the gap between what people say and what they do, and finally an engineering approach to
+decisions: base rates over forecasts, rules written before you need them, position sizing as the
+real risk control. Lessons embed live charts and threshold tables built from the same data as the
+rest of the site, so the numbers quoted are current rather than hardcoded.
+
+The payoff chapter is a case study of four turning points — the COVID crash bottom, the 2022 top,
+the 2022 bear bottom and today — showing every core reading at each one side by side, plus what the
+S&P 500 actually did over the following year, computed from the price history. The pattern is the
+lesson: at good buying moments fear is extreme and policy is easing, and at poor ones sentiment is
+comfortable and the Fed is about to tighten.
+
 **Overview** — Fear & Greed gauges for stocks and crypto, then a *Signals* strip scoring the
 readings traders check first (yield curve, credit spreads, financial conditions, crowd sentiment,
 VIX, real policy rate, Sahm rule, S&P drawdown) against their usual ranges, then a card and chart for
@@ -27,8 +41,13 @@ balance sheet through 2021?"
 selected range, sorted by strength. A quick read on which of these actually moves with the index
 in the current regime.
 
-Range selector covers Since 2020, 5Y, 3Y, 1Y, YTD and Max. The view, range and series selection
-all live in the URL hash, so any state you land on is shareable.
+Range selector covers Since 2020, 5Y, 3Y, 1Y, YTD and Max. The view, range, detail level, lesson
+and series selection all live in the URL hash, so any state you land on is shareable.
+
+A **detail level** control keeps the overview from overwhelming a beginner: *Core* shows the 9
+series the lessons actually teach, *Standard* adds the 14 that give them context, and *Everything*
+shows all 37. Each series declares its own `level` in `scripts/series.mjs`. New visitors land on
+Learn at Core; the hash restores whatever you last chose.
 
 ## Series
 
@@ -51,6 +70,10 @@ points.
 Series definitions live in [`scripts/series.mjs`](scripts/series.mjs). To add one, find its ID on
 FRED and append an entry — the fetch script and the whole UI are driven off that array. Series from
 somewhere other than FRED set a `source` naming a loader in `scripts/fetch-data.mjs`.
+
+Lesson content lives in [`lessons.js`](lessons.js) as plain data: prose, which series to chart,
+threshold tables, case-study dates and checklists. Adding or reordering a lesson needs no changes
+to `app.js`.
 
 ## Local development
 
