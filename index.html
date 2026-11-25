@@ -30,11 +30,37 @@
     <nav class="toolbar">
       <div class="wrap toolbar-inner">
         <div class="tabs" role="tablist" id="tabs">
-          <button class="tab is-active" role="tab" data-view="overview">Overview</button>
-          <button class="tab" role="tab" data-view="compare">Compare</button>
-          <button class="tab" role="tab" data-view="correlation">Correlation</button>
+          <button
+            class="tab is-active"
+            role="tab"
+            data-view="overview"
+            data-help="Overview|Every series as its own chart, grouped by theme. Hover any chart and the same date line appears on all of them, so you can read all 26 metrics at one moment in time."
+          >
+            Overview
+          </button>
+          <button
+            class="tab"
+            role="tab"
+            data-view="compare"
+            data-help="Compare|Puts any combination of series on a single chart so you can see how they moved relative to each other."
+          >
+            Compare
+          </button>
+          <button
+            class="tab"
+            role="tab"
+            data-view="correlation"
+            data-help="Correlation|Ranks which series actually move together with the S&amp;P 500 over the range you picked."
+          >
+            Correlation
+          </button>
         </div>
-        <div class="ranges" id="ranges" aria-label="Date range">
+        <div
+          class="ranges"
+          id="ranges"
+          aria-label="Date range"
+          data-help="Date range|Sets the window for every chart, every change figure and the correlations. Since 2020 spans the COVID crash, the 2021 melt-up, the rate-hike cycle and everything after."
+        >
           <button class="range is-active" data-range="2020">Since 2020</button>
           <button class="range" data-range="5y">5Y</button>
           <button class="range" data-range="3y">3Y</button>
@@ -50,12 +76,30 @@
 
       <!-- Overview ---------------------------------------------------->
       <section class="view" id="view-overview" hidden>
+        <section class="gauges">
+          <div class="section-head">
+            <h2>Fear &amp; Greed</h2>
+            <p>
+              Sentiment gauges built from market internals rather than opinion. Extremes matter more
+              than the middle: readings under 25 and over 75 are where crowds have historically been
+              wrong at turning points.
+            </p>
+          </div>
+          <div class="gauge-grid" id="gauge-grid"></div>
+        </section>
+
         <section class="signals">
           <div class="section-head">
             <h2>Signals right now</h2>
             <p>
               The readings traders watch first, scored against their usual ranges. This is context,
               not advice.
+            </p>
+            <p class="signal-legend">
+              Colour of the left edge:
+              <span class="key"><i data-status="good"></i>in its normal range</span>
+              <span class="key"><i data-status="warn"></i>worth watching</span>
+              <span class="key"><i data-status="bad"></i>historically stressed</span>
             </p>
           </div>
           <div class="signal-grid" id="signal-grid"></div>
@@ -75,20 +119,32 @@
         <div class="compare-controls">
           <div class="control-row">
             <div class="modes" id="compare-modes">
-              <button class="mode is-active" data-mode="indexed">Indexed to 100</button>
-              <button class="mode" data-mode="raw">Raw values</button>
+              <button
+                class="mode is-active"
+                data-mode="indexed"
+                data-help="Indexed to 100|Every series is divided by its own first value in the range, then multiplied by 100, so they all start together at 100 and you are comparing percentage moves instead of raw units. A line at 250 has grown 150% since the start; 50 means it halved. This is how you put Bitcoin in dollars on the same axis as inflation in percent."
+              >
+                Indexed to 100
+              </button>
+              <button
+                class="mode"
+                data-mode="raw"
+                data-help="Raw values|Plots the real reported numbers on one shared axis. Readable when the series use similar units, like the 2-year next to the 10-year Treasury. Mixing a dollar price with a percentage rate will squash the smaller one into a flat line."
+              >
+                Raw values
+              </button>
             </div>
             <div class="modes">
-              <button class="mode" id="log-toggle" title="Equal percentage moves take equal vertical space">
-                Log scale
-              </button>
+              <button class="mode" id="log-toggle">Log scale</button>
             </div>
           </div>
           <button class="link-btn" id="compare-clear">Clear all</button>
         </div>
         <div class="chart-box chart-box--large">
           <canvas id="compare-chart"></canvas>
+          <div class="chart-tip" id="compare-tip" hidden></div>
         </div>
+        <p class="chart-caption" id="compare-caption"></p>
         <div class="picker" id="compare-picker"></div>
       </section>
 

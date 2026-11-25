@@ -1,5 +1,8 @@
 // Single source of truth for every tracked series.
-// `id` is the FRED series ID: https://fred.stlouisfed.org/series/<id>
+// `id` is the FRED series ID unless `source` says otherwise:
+// https://fred.stlouisfed.org/series/<id>
+//
+// source     - which loader in fetch-data.mjs retrieves it (defaults to 'fred')
 //
 // transform  - how the chart renders by default
 //              level    = raw value
@@ -18,6 +21,36 @@ export const GROUPS = [
 ];
 
 export const SERIES = [
+  // ---- Sentiment -----------------------------------------------------
+  // Not on FRED. The daily GitHub Action fetches these server-side, which also
+  // sidesteps the CORS headers these APIs do not send.
+  {
+    id: 'CNNFG',
+    source: 'cnn',
+    name: 'Fear & Greed (Stocks)',
+    group: 'markets',
+    unit: 'score',
+    transform: 'level',
+    direction: 'up_good',
+    gauge: 'stocks',
+    url: 'https://www.cnn.com/markets/fear-and-greed',
+    sourceLabel: 'CNN Business',
+    note: 'CNN composite of seven market internals. Extremes tend to mark turning points.',
+  },
+  {
+    id: 'CRYPTOFG',
+    source: 'cryptofng',
+    name: 'Fear & Greed (Crypto)',
+    group: 'markets',
+    unit: 'score',
+    transform: 'level',
+    direction: 'up_good',
+    gauge: 'crypto',
+    url: 'https://alternative.me/crypto/fear-and-greed-index/',
+    sourceLabel: 'alternative.me',
+    note: 'The same idea for Bitcoin: volatility, momentum, volume and dominance.',
+  },
+
   // ---- Markets -------------------------------------------------------
   {
     id: 'SP500',

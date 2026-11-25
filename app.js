@@ -55,7 +55,55 @@ function setHover(ts) {
     hoverFrame = null;
     for (const chart of charts.values()) chart.render();
     updateReadouts();
+    updateCompareTip();
   });
+}
+
+/* Chart.js' built-in index tooltip matches points by array position, so it can
+   only ever resolve one of several series sampled at different frequencies.
+   This reads every line at the hovered date instead. */
+function updateCompareTip() {
+  const chart = charts.get('compare');
+  const tip = document.getElementById('compare-tip');
+  if (!chart || !tip) return;
+
+  const x = hoverTs === null ? -1 : chart.scales.x.getPixelForValue(hoverTs);
+  if (x < chart.chartArea.left || x > chart.chartArea.right) {
+    tip.hidden = true;
+    return;
+  }
+
+  const indexed = state.compareMode === 'indexed';
+  const rows = chart.$hover.lines
+    .map((line) => {
+      const i = indexAt(line.timestamps, hoverTs);
+      if (i < 0) return '';
+      const reading = indexed
+        ? `${num(line.values[i], 1)} <span class="tip-raw">${formatValue(line.series, line.raw[i])}</span>`
+        : formatValue(line.series, line.values[i]);
+      return `<div class="tip-row">
+        <span class="tip-dot" style="background:${line.color}"></span>
+        <span class="tip-name">${line.series.name}</span>
+        <span class="tip-value">${reading}</span>
+      </div>`;
+    })
+    .join('');
+
+  if (!rows) {
+    tip.hidden = true;
+    return;
+  }
+
+  const date = new Date(hoverTs).toISOString().slice(0, 10);
+  tip.innerHTML = `<div class="tip-date">${prettyDate(date)}</div>${rows}`;
+  tip.hidden = false;
+
+  // Flip to the left of the crosshair when it would overflow the chart.
+  const { canvas } = chart;
+  const left = x + canvas.offsetLeft;
+  const flip = left + tip.offsetWidth + 16 > canvas.offsetLeft + chart.chartArea.right;
+  tip.style.left = `${flip ? left - tip.offsetWidth - 14 : left + 14}px`;
+  tip.style.top = `${canvas.offsetTop + chart.chartArea.top + 8}px`;
 }
 
 function updateReadouts() {
@@ -222,6 +270,8 @@ function formatValue(series, value) {
       return `${num(value, 2)} pp`;
     case 'z':
       return num(value, 2);
+    case 'score':
+      return num(value, 0);
     case 'usd':
       return Math.abs(value) >= 1000
         ? `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
@@ -246,7 +296,7 @@ function formatValue(series, value) {
 /** True when a change is better expressed in points than in percent. */
 function isRateLike(series) {
   return (
-    ['pct', 'pp', 'z'].includes(series.unit) ||
+    ['pct', 'pp', 'z', 'score'].includes(series.unit) ||
     series.transform === 'yoy' ||
     series.transform === 'mom_diff'
   );
@@ -262,6 +312,7 @@ function changeOverRange(series, values) {
     const sign = delta >= 0 ? '+' : '';
     let text;
     if (series.transform === 'mom_diff') text = `${sign}${num(delta, 0)}k`;
+    else if (series.unit === 'score') text = `${sign}${num(delta, 0)} pts`;
     else if (series.unit === 'z') text = `${sign}${num(delta, 2)} pts`;
     else text = `${sign}${num(delta, 2)} pp`;
     return { delta, text };
@@ -429,7 +480,8 @@ function renderGroups() {
         </div>
         <div class="chart-box"><canvas id="${canvasId}"></canvas></div>
         <p class="card-note">${series.note}</p>
-        <a class="card-link" href="https://fred.stlouisfed.org/series/${series.id}" target="_blank" rel="noopener">FRED: ${series.id} ↗</a>`;
+        <a class="card-link" href="${series.url ?? `https://fred.stlouisfed.org/series/${series.id}`}"
+           target="_blank" rel="noopener">${series.sourceLabel ?? `FRED: ${series.id}`} ↗</a>`;
 
       grid.append(card);
       renderCardChart(card.querySelector('canvas'), series, view);
@@ -437,6 +489,118 @@ function renderGroups() {
 
     host.append(section);
   }
+}
+
+/* ---- Fear & Greed gauges --------------------------------------------- */
+
+const FG_ZONES = [
+  { to: 25, color: '#f85149', label: 'Extreme fear' },
+  { to: 45, color: '#f0883e', label: 'Fear' },
+  { to: 55, color: '#d29922', label: 'Neutral' },
+  { to: 75, color: '#7ee787', label: 'Greed' },
+  { to: 100, color: '#3fb950', label: 'Extreme greed' },
+];
+
+const GAUGE_HELP = {
+  stocks:
+    "Fear &amp; Greed, stocks|CNN's composite of seven market internals: price momentum against the 200-day average, the strength and breadth of advances, put-versus-call volume, junk bond demand, volatility, and safe-haven demand. 0 is maximum fear, 100 is maximum greed.",
+  crypto:
+    'Fear &amp; Greed, crypto|The same 0-100 idea for Bitcoin, weighted toward price volatility, trading momentum and volume, social activity and market dominance. It swings harder and faster than the stock version.',
+};
+
+function shiftDays(iso, delta) {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + delta * 86400000).toISOString().slice(0, 10);
+}
+
+function zoneOf(value) {
+  return FG_ZONES.find((z) => value <= z.to) ?? FG_ZONES.at(-1);
+}
+
+function polar(cx, cy, r, deg) {
+  const a = (deg * Math.PI) / 180;
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+}
+
+/** Arc across the top half of the dial, where 0 is hard left and 100 hard right. */
+function arcPath(cx, cy, r, fromValue, toValue) {
+  const [x1, y1] = polar(cx, cy, r, 180 + (fromValue / 100) * 180);
+  const [x2, y2] = polar(cx, cy, r, 180 + (toValue / 100) * 180);
+  return `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+}
+
+function gaugeSvg(value) {
+  const cx = 120;
+  const cy = 112;
+  const r = 90;
+  const zone = zoneOf(value);
+
+  const bands = FG_ZONES.map((z, i) => {
+    const from = i === 0 ? 0 : FG_ZONES[i - 1].to;
+    // Hairline gap between bands so the boundaries stay legible.
+    const pad = 0.6;
+    return `<path d="${arcPath(cx, cy, r, from + pad, z.to - pad)}" stroke="${z.color}"
+      stroke-width="15" fill="none" opacity="${z === zone ? 1 : 0.28}" stroke-linecap="butt" />`;
+  }).join('');
+
+  const angle = 180 + (Math.min(Math.max(value, 0), 100) / 100) * 180;
+  const [nx, ny] = polar(cx, cy, r - 15, angle);
+  const [bx, by] = polar(cx, cy, 5.5, angle + 90);
+  const [bx2, by2] = polar(cx, cy, 5.5, angle - 90);
+
+  return `<svg viewBox="0 0 240 132" class="gauge-svg" role="img"
+      aria-label="${num(value, 0)} out of 100, ${zone.label}">
+      ${bands}
+      <polygon points="${nx.toFixed(1)},${ny.toFixed(1)} ${bx.toFixed(1)},${by.toFixed(1)} ${bx2.toFixed(1)},${by2.toFixed(1)}"
+        fill="${zone.color}" />
+      <circle cx="${cx}" cy="${cy}" r="6" fill="${zone.color}" />
+      <text x="12" y="128" class="gauge-end">0</text>
+      <text x="228" y="128" class="gauge-end" text-anchor="end">100</text>
+    </svg>`;
+}
+
+function renderGauges() {
+  const host = document.getElementById('gauge-grid');
+  const gauges = DATA.series.filter((s) => s.gauge);
+
+  host.innerHTML = gauges
+    .map((series) => {
+      const value = series.values.at(-1);
+      const zone = zoneOf(value);
+      const last = series.dates.at(-1);
+
+      const history = [
+        ['1 week ago', shiftDays(last, -7)],
+        ['1 month ago', shiftMonths(last, -1)],
+        ['1 year ago', shiftYears(last, -1)],
+      ]
+        .map(([label, target]) => {
+          const j = closestIndex(series.dates, target);
+          const past = series.values[j];
+          if (!Number.isFinite(past) || series.dates[j] >= last) return '';
+          return `<div class="gauge-past">
+            <span>${label}</span>
+            <b style="color:${zoneOf(past).color}">${num(past, 0)}</b>
+          </div>`;
+        })
+        .join('');
+
+      return `<article class="card gauge-card" data-help="${GAUGE_HELP[series.gauge]}">
+        <div class="gauge-head">
+          <div>
+            <div class="card-title">${series.name.match(/\(([^)]+)\)/)?.[1] ?? series.name}</div>
+            <div class="card-sub">as of ${prettyDate(last)}</div>
+          </div>
+          <a class="card-link" href="${series.url}" target="_blank" rel="noopener">${series.sourceLabel} ↗</a>
+        </div>
+        ${gaugeSvg(value)}
+        <div class="gauge-reading">
+          <div class="gauge-value" style="color:${zone.color}">${num(value, 0)}</div>
+          <div class="gauge-rating" style="color:${zone.color}">${zone.label}</div>
+        </div>
+        <div class="gauge-history">${history}</div>
+      </article>`;
+    })
+    .join('');
 }
 
 /* ---- Signals --------------------------------------------------------- */
@@ -652,6 +816,25 @@ function renderComparePicker() {
     .join('');
 }
 
+/** Plain-language note under the chart explaining how to read the current mode. */
+function captionFor(datasets) {
+  const scale = state.logScale ? ' Vertical distance is percentage change, not absolute change.' : '';
+
+  if (state.compareMode !== 'indexed') {
+    return (
+      'Showing each series at its reported value on one shared axis. ' +
+      'If a line looks flat, its units are much smaller than another series on the chart — ' +
+      `switch to Indexed to 100 to compare their moves fairly.${scale}`
+    );
+  }
+
+  const start = prettyDate(new Date(datasets[0].data[0].x).toISOString().slice(0, 10));
+  return (
+    `100 is where each series stood on ${start}, so every line starts together and you read ` +
+    `percentage moves: 200 means it doubled, 50 means it halved.${scale}`
+  );
+}
+
 function renderCompare() {
   const canvas = document.getElementById('compare-chart');
   destroyChart('compare');
@@ -677,7 +860,13 @@ function renderCompare() {
       backgroundColor: colorFor(id),
       seriesId: id,
     });
-    lines.push({ timestamps: toTimestamps(view.dates), values, color: colorFor(id) });
+    lines.push({
+      series,
+      timestamps: toTimestamps(view.dates),
+      values,
+      raw: view.values,
+      color: colorFor(id),
+    });
   }
 
   // A log axis cannot render zero or negative values, which raw spreads and the
@@ -686,15 +875,18 @@ function renderCompare() {
   const logToggle = document.getElementById('log-toggle');
   logToggle.disabled = !allPositive;
   logToggle.classList.toggle('is-active', state.logScale && allPositive);
-  logToggle.title = allPositive
-    ? 'Equal percentage moves take equal vertical space'
-    : 'Unavailable: a selected series has zero or negative values';
+  logToggle.dataset.help = allPositive
+    ? 'Log scale|Equal percentage moves take equal vertical space, so 100 to 200 looks the same size as 200 to 400. Turn it on when one series dwarfs the rest and flattens everything else into a straight line, which is usually Bitcoin.'
+    : 'Log scale unavailable|A log axis has no room for zero or negative numbers, and one of the series you picked goes below zero. Switch to Indexed to 100, or deselect that series.';
 
+  const caption = document.getElementById('compare-caption');
   if (!datasets.length) {
     destroyChart('compare');
     canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    caption.textContent = 'Pick a series below to plot it.';
     return;
   }
+  caption.textContent = captionFor(datasets);
 
   const useLog = state.logScale && allPositive;
   const indexed = state.compareMode === 'indexed';
@@ -711,20 +903,9 @@ function renderCompare() {
           labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, padding: 16 },
         },
         decimation: { enabled: true, algorithm: 'lttb', samples: 400 },
-        tooltip: {
-          padding: 10,
-          caretPadding: 12,
-          callbacks: {
-            title: (items) => prettyDate(new Date(items[0].parsed.x).toISOString().slice(0, 10)),
-            label: (item) => {
-              const series = DATA.series.find((s) => s.id === item.dataset.seriesId);
-              const raw = indexed ? num(item.parsed.y, 1) : formatValue(series, item.parsed.y);
-              return `  ${series.name}: ${raw}`;
-            },
-          },
-        },
+        // Replaced by the crosshair tooltip, which can read every series.
+        tooltip: { enabled: false },
       },
-      interaction: { mode: 'index', intersect: false },
       scales: {
         x: timeScale(),
         y: {
@@ -848,6 +1029,52 @@ function renderCorrelation() {
     </tbody>`;
 }
 
+/* ---- Hover help ------------------------------------------------------
+   Any element carrying data-help="Title|Body" gets a styled popover on hover
+   or keyboard focus. */
+
+function initHelp() {
+  const pop = document.createElement('div');
+  pop.className = 'help-pop';
+  pop.hidden = true;
+  document.body.append(pop);
+
+  const hide = () => {
+    pop.classList.remove('is-visible');
+    pop.hidden = true;
+  };
+
+  const show = (el) => {
+    const [title, body] = el.dataset.help.split('|');
+    pop.innerHTML = body ? `<strong>${title}</strong>${body}` : title;
+    pop.hidden = false;
+
+    // Measure first, then place below the control, flipping above when the
+    // popover would run off the bottom of the window.
+    const target = el.getBoundingClientRect();
+    const { width, height } = pop.getBoundingClientRect();
+    const left = Math.min(
+      Math.max(12, target.left + target.width / 2 - width / 2),
+      window.innerWidth - width - 12
+    );
+    const below = target.bottom + 10;
+    pop.style.left = `${left}px`;
+    pop.style.top = `${below + height > window.innerHeight - 12 ? target.top - height - 10 : below}px`;
+    pop.classList.add('is-visible');
+  };
+
+  const handle = (event) => {
+    const el = event.target.closest?.('[data-help]');
+    if (el) show(el);
+    else hide();
+  };
+
+  document.addEventListener('mouseover', handle);
+  document.addEventListener('focusin', handle);
+  document.addEventListener('mouseleave', hide);
+  window.addEventListener('scroll', hide, { passive: true });
+}
+
 /* ---- View plumbing --------------------------------------------------- */
 
 function renderActiveView() {
@@ -856,6 +1083,7 @@ function renderActiveView() {
   }
 
   if (state.view === 'overview') {
+    renderGauges();
     renderSignals();
     renderGroups();
   } else {
@@ -993,6 +1221,7 @@ async function init() {
     DATA.series.reduce((latest, s) => (s.dates.at(-1) > latest ? s.dates.at(-1) : latest), '0000-01-01')
   )} · refreshed ${new Date(DATA.updated).toLocaleString()}`;
 
+  initHelp();
   wireControls();
   renderComparePicker();
   syncControls();

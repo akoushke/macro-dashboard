@@ -11,10 +11,12 @@ no backend and no client-side rate limits.
 
 ## What it shows
 
-**Overview** — a card and chart for each of the 26 series, grouped by theme, with the latest
-reading and the change over the selected range. Above the cards, a *Signals* strip scores the
+**Overview** — Fear & Greed gauges for stocks and crypto, then a *Signals* strip scoring the
 readings traders check first (yield curve, credit spreads, financial conditions, VIX, real policy
-rate, Sahm rule, S&P drawdown) against their usual ranges.
+rate, Sahm rule, S&P drawdown) against their usual ranges, then a card and chart for each of the 28
+series grouped by theme. Hovering any chart drops the same date line on all of them and swaps every
+card's headline figure for its value on that date, so one pass of the cursor reads the whole
+dashboard at a single moment in time.
 
 **Compare** — any combination of series on one chart, rebased to 100 at the start of the range so
 series with different units line up, with an optional log scale for when something like Bitcoin
@@ -32,6 +34,7 @@ all live in the URL hash, so any state you land on is shareable.
 
 | Group | Series |
 | --- | --- |
+| Sentiment | Fear & Greed for stocks (CNN) and for crypto (alternative.me) |
 | Markets | S&P 500, Nasdaq Composite, Bitcoin, VIX, US Dollar Index |
 | Rates & Credit | Fed funds, 10Y Treasury, 2Y Treasury, 10Y–2Y spread, Baa corporate credit spread, Chicago Fed financial conditions |
 | Inflation | CPI, Core CPI, Core PCE (all year over year) |
@@ -40,7 +43,8 @@ all live in the URL hash, so any state you land on is shareable.
 | Economy & Liquidity | Real GDP, M2, Fed balance sheet, consumer sentiment, retail sales |
 
 Series definitions live in [`scripts/series.mjs`](scripts/series.mjs). To add one, find its ID on
-FRED and append an entry — the fetch script and the whole UI are driven off that array.
+FRED and append an entry — the fetch script and the whole UI are driven off that array. Series from
+somewhere other than FRED set a `source` naming a loader in `scripts/fetch-data.mjs`.
 
 ## Local development
 
@@ -58,6 +62,11 @@ entry, which needs no API key, keeps observations from 2018 onward (two years of
 year-over-year transforms have a comparison point at the left edge of the 2020 view) and writes a
 single `data/macro.json`. If one series fails after three attempts, the previous values for it are
 carried forward so one bad response can't blank the dashboard.
+
+Fetching on a schedule rather than in the browser also means sources that send no CORS headers are
+still usable, which is how the two Fear & Greed indices get in. CNN's endpoint rejects requests that
+don't look like a browser and serves a rolling window of roughly five years, returning a 500 for
+anything older, so the loader walks forward through candidate start dates until one is accepted.
 
 One gotcha when adding series: the ICE BofA spread series (`BAMLH0A0HYM2` and friends) are licensed
 and FRED only returns the last three years of them regardless of the requested start date, which is
