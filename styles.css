@@ -528,7 +528,13 @@ main {
   scroll-margin-top: 68px;
 }
 
+/* Heading and its explanation sit side by side: a readable measure under a
+   1200px card grid would otherwise leave the right half of the line empty. */
 .section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 72ch);
+  align-items: baseline;
+  gap: 8px 36px;
   margin: 32px 0 16px;
 }
 
@@ -538,10 +544,10 @@ main {
 }
 
 .section-head p {
-  margin: 4px 0 0;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
-  max-width: 75ch;
+  line-height: 1.55;
 }
 
 /* ---- Hover help ---------------------------------------------------- */
@@ -729,6 +735,12 @@ main {
   margin: 10px 0 0;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Its own full-width row, below the heading and blurb. */
+.section-head .signal-legend {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
 }
 
 .signal-legend .key {
@@ -1109,6 +1121,12 @@ main {
   .overview-main > section,
   .overview-main #groups > section {
     scroll-margin-top: 112px;
+  }
+
+  /* Not enough width left for two columns; stack the blurb under the heading. */
+  .section-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
   }
 }
 
