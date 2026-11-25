@@ -75,8 +75,13 @@
       <p class="loading" id="loading">Loading data…</p>
 
       <!-- Overview ---------------------------------------------------->
-      <section class="view" id="view-overview" hidden>
-        <section class="gauges">
+      <section class="view overview-layout" id="view-overview" hidden>
+        <aside class="side-nav" aria-label="Jump to section">
+          <nav id="side-nav"></nav>
+        </aside>
+
+        <div class="overview-main">
+        <section class="gauges" id="sec-gauges">
           <div class="section-head">
             <h2>Fear &amp; Greed</h2>
             <p>
@@ -88,7 +93,7 @@
           <div class="gauge-grid" id="gauge-grid"></div>
         </section>
 
-        <section class="signals">
+        <section class="signals" id="sec-signals">
           <div class="section-head">
             <h2>Signals right now</h2>
             <p>
@@ -105,6 +110,7 @@
           <div class="signal-grid" id="signal-grid"></div>
         </section>
         <div id="groups"></div>
+        </div>
       </section>
 
       <!-- Compare ----------------------------------------------------->

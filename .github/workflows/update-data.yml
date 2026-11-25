@@ -1,0 +1,44 @@
+name: Update data
+
+on:
+  schedule:
+    # 23:00 UTC is after the US equity close, so SP500 and VIX have settled.
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/update-data.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch series from FRED
+        run: node scripts/fetch-data.mjs
+
+      - name: Commit refreshed data
+        run: |
+          if git diff --quiet -- data/macro.json; then
+            echo "No change in data/macro.json"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/macro.json
+          git commit -m "chore: refresh FRED data ($(date -u +%Y-%m-%d))"
+          git push

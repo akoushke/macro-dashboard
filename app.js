@@ -272,6 +272,10 @@ function formatValue(series, value) {
       return num(value, 2);
     case 'score':
       return num(value, 0);
+    case 'days':
+      return `${num(value, 0)} days`;
+    case 'months':
+      return `${num(value, 1)} mo`;
     case 'usd':
       return Math.abs(value) >= 1000
         ? `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
@@ -296,7 +300,7 @@ function formatValue(series, value) {
 /** True when a change is better expressed in points than in percent. */
 function isRateLike(series) {
   return (
-    ['pct', 'pp', 'z', 'score'].includes(series.unit) ||
+    ['pct', 'pp', 'z', 'score', 'days', 'months'].includes(series.unit) ||
     series.transform === 'yoy' ||
     series.transform === 'mom_diff'
   );
@@ -312,6 +316,8 @@ function changeOverRange(series, values) {
     const sign = delta >= 0 ? '+' : '';
     let text;
     if (series.transform === 'mom_diff') text = `${sign}${num(delta, 0)}k`;
+    else if (series.unit === 'days') text = `${sign}${num(delta, 0)} days`;
+    else if (series.unit === 'months') text = `${sign}${num(delta, 1)} mo`;
     else if (series.unit === 'score') text = `${sign}${num(delta, 0)} pts`;
     else if (series.unit === 'z') text = `${sign}${num(delta, 2)} pts`;
     else text = `${sign}${num(delta, 2)} pp`;
@@ -452,8 +458,12 @@ function renderGroups() {
     if (!members.length) continue;
 
     const section = document.createElement('section');
+    section.id = `sec-${group.id}`;
     section.innerHTML = `
-      <div class="section-head"><h2>${group.name}</h2></div>
+      <div class="section-head">
+        <h2>${group.name}</h2>
+        ${group.blurb ? `<p>${group.blurb}</p>` : ''}
+      </div>
       <div class="card-grid"></div>`;
     const grid = section.querySelector('.card-grid');
 
@@ -489,6 +499,76 @@ function renderGroups() {
 
     host.append(section);
   }
+}
+
+/* ---- Section navigation ----------------------------------------------
+   Lists the Overview's sections down the left and highlights whichever one the
+   reader is currently looking at. */
+
+function sectionList() {
+  return [
+    { id: 'sec-gauges', label: 'Fear & Greed', count: DATA.series.filter((s) => s.gauge).length },
+    { id: 'sec-signals', label: 'Signals', count: buildSignals().length },
+    ...DATA.groups
+      .map((group) => ({
+        id: `sec-${group.id}`,
+        label: group.name,
+        count: DATA.series.filter((s) => s.group === group.id).length,
+      }))
+      .filter((entry) => entry.count > 0),
+  ];
+}
+
+function renderSideNav() {
+  document.getElementById('side-nav').innerHTML = sectionList()
+    .map(
+      ({ id, label, count }) => `
+      <a class="side-link" href="#${id}" data-section="${id}">
+        <span>${label}</span>
+        <span class="side-count">${count}</span>
+      </a>`
+    )
+    .join('');
+}
+
+function highlightSection() {
+  const links = [...document.querySelectorAll('.side-link')];
+  if (!links.length) return;
+
+  // Whichever section's heading has most recently passed under the toolbar.
+  const cutoff = 140;
+  let active = links[0];
+  for (const link of links) {
+    const target = document.getElementById(link.dataset.section);
+    if (target && target.getBoundingClientRect().top <= cutoff) active = link;
+  }
+  // At the very bottom the last section may never reach the cutoff.
+  if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 4) active = links.at(-1);
+
+  for (const link of links) link.classList.toggle('is-active', link === active);
+}
+
+function wireSideNav() {
+  document.getElementById('side-nav').addEventListener('click', (event) => {
+    const link = event.target.closest('.side-link');
+    if (!link) return;
+    // Scrolling is handled here so the URL hash stays reserved for view state.
+    event.preventDefault();
+    document.getElementById(link.dataset.section)?.scrollIntoView({ behavior: 'smooth' });
+  });
+
+  let frame = null;
+  window.addEventListener(
+    'scroll',
+    () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        highlightSection();
+      });
+    },
+    { passive: true }
+  );
 }
 
 /* ---- Fear & Greed gauges --------------------------------------------- */
@@ -665,6 +745,23 @@ function buildSignals() {
         { below: Infinity, status: 'bad', verdict: 'Tight' },
       ]),
       'Chicago Fed NFCI. Below zero means money is easier to come by than usual.'
+    );
+  }
+
+  const fg = latestOf('CNNFG');
+  if (fg) {
+    // Deliberately inverted: crowd fear has historically been the better entry.
+    push(
+      'Crowd sentiment',
+      num(fg.value, 0),
+      band(fg.value, [
+        { below: 25, status: 'good', verdict: 'Extreme fear' },
+        { below: 45, status: 'good', verdict: 'Fear' },
+        { below: 55, status: 'warn', verdict: 'Neutral' },
+        { below: 75, status: 'warn', verdict: 'Greed' },
+        { below: Infinity, status: 'bad', verdict: 'Extreme greed' },
+      ]),
+      'Fear & Greed, 0 to 100. Scored contrarian: fear has been the better time to buy.'
     );
   }
 
@@ -1086,6 +1183,8 @@ function renderActiveView() {
     renderGauges();
     renderSignals();
     renderGroups();
+    renderSideNav();
+    highlightSection();
   } else {
     // Card charts are expensive to keep alive; drop them when hidden.
     for (const key of [...charts.keys()]) {
@@ -1223,6 +1322,7 @@ async function init() {
 
   initHelp();
   wireControls();
+  wireSideNav();
   renderComparePicker();
   syncControls();
   renderActiveView();

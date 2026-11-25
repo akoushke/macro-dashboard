@@ -150,6 +150,72 @@ main {
   color: var(--bad);
 }
 
+/* ---- Section navigation -------------------------------------------- */
+.overview-layout[hidden] {
+  display: none;
+}
+
+.overview-layout {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.side-nav {
+  position: sticky;
+  top: 72px;
+  padding-top: 32px;
+}
+
+.side-nav nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-left: 1px solid var(--border);
+}
+
+.side-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px 7px 13px;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+  line-height: 1.3;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.side-link:hover {
+  color: var(--text);
+}
+
+.side-link.is-active {
+  color: var(--text);
+  border-left-color: var(--accent);
+  font-weight: 600;
+}
+
+.side-count {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/* Keeps a jumped-to heading clear of the sticky toolbar. */
+.overview-main > section,
+.overview-main #groups > section {
+  scroll-margin-top: 68px;
+}
+
 .section-head {
   margin: 32px 0 16px;
 }
@@ -667,6 +733,58 @@ main {
 .disclaimer {
   font-size: 12px;
   opacity: 0.75;
+}
+
+/* Below this the sidebar costs more width than it saves scrolling, so it
+   becomes a horizontal strip above the content. */
+@media (max-width: 1000px) {
+  .overview-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .side-nav {
+    top: 56px;
+    z-index: 15;
+    padding: 10px 0;
+    background: rgba(11, 14, 20, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .side-nav nav {
+    flex-direction: row;
+    gap: 4px;
+    border-left: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .side-nav nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .side-link {
+    margin-left: 0;
+    padding: 6px 12px;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+
+  .side-link.is-active {
+    border-left: 0;
+    border-bottom-color: var(--accent);
+  }
+
+  .side-count {
+    display: none;
+  }
+
+  .overview-main > section,
+  .overview-main #groups > section {
+    scroll-margin-top: 112px;
+  }
 }
 
 @media (max-width: 640px) {

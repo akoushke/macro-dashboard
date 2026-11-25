@@ -12,11 +12,11 @@ no backend and no client-side rate limits.
 ## What it shows
 
 **Overview** — Fear & Greed gauges for stocks and crypto, then a *Signals* strip scoring the
-readings traders check first (yield curve, credit spreads, financial conditions, VIX, real policy
-rate, Sahm rule, S&P drawdown) against their usual ranges, then a card and chart for each of the 28
-series grouped by theme. Hovering any chart drops the same date line on all of them and swaps every
-card's headline figure for its value on that date, so one pass of the cursor reads the whole
-dashboard at a single moment in time.
+readings traders check first (yield curve, credit spreads, financial conditions, crowd sentiment,
+VIX, real policy rate, Sahm rule, S&P drawdown) against their usual ranges, then a card and chart for
+each of the 37 series grouped by theme, with a sticky section nav down the left. Hovering any chart
+drops the same date line on all of them and swaps every card's headline figure for its value on that
+date, so one pass of the cursor reads the whole dashboard at a single moment in time.
 
 **Compare** — any combination of series on one chart, rebased to 100 at the start of the range so
 series with different units line up, with an optional log scale for when something like Bitcoin
@@ -34,13 +34,19 @@ all live in the URL hash, so any state you land on is shareable.
 
 | Group | Series |
 | --- | --- |
-| Sentiment | Fear & Greed for stocks (CNN) and for crypto (alternative.me) |
+| Sentiment | Fear & Greed for stocks (CNN) and crypto (alternative.me), consumer sentiment, inflation expectations |
 | Markets | S&P 500, Nasdaq Composite, Bitcoin, VIX, US Dollar Index |
 | Rates & Credit | Fed funds, 10Y Treasury, 2Y Treasury, 10Y–2Y spread, Baa corporate credit spread, Chicago Fed financial conditions |
 | Inflation | CPI, Core CPI, Core PCE (all year over year) |
 | Labor | Unemployment rate, nonfarm payroll change, initial jobless claims, Sahm rule |
+| Buying & Selling Activity | New home sales, new listings, homes for sale, days to sell, months of supply, stock margin debt, household stock allocation, personal saving rate |
 | Real Estate | Case-Shiller home prices, 30-year mortgage rate, housing starts |
-| Economy & Liquidity | Real GDP, M2, Fed balance sheet, consumer sentiment, retail sales |
+| Economy & Liquidity | Real GDP, M2, Fed balance sheet, retail sales |
+
+Each group carries a plain-language note explaining what it measures and how to read it, and every
+card explains its own series. Sentiment and activity are split deliberately: sentiment is how people
+say they feel, activity is what they are doing with their money, and the two diverge at turning
+points.
 
 Series definitions live in [`scripts/series.mjs`](scripts/series.mjs). To add one, find its ID on
 FRED and append an entry — the fetch script and the whole UI are driven off that array. Series from
